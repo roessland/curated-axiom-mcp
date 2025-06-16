@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -119,8 +120,8 @@ func (c *Client) ExecuteQuery(apl string, dataset string) (*QueryResult, error) 
 		return nil, fmt.Errorf("failed to marshal query request: %w", err)
 	}
 
-	// Create the HTTP request
-	url := fmt.Sprintf("%s/datasets/%s/query", c.baseURL, dataset)
+	// Create the HTTP request - use the _apl endpoint
+	url := fmt.Sprintf("%s/datasets/_apl?format=tabular", c.baseURL)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -133,18 +134,83 @@ func (c *Client) ExecuteQuery(apl string, dataset string) (*QueryResult, error) 
 		req.Header.Set("X-Axiom-Org-Id", c.config.OrgID)
 	}
 
+	// Comprehensive debug logging for the request
+	log.Printf("[DEBUG] ==================== HTTP REQUEST ====================")
+	log.Printf("[DEBUG] Method: %s", req.Method)
+	log.Printf("[DEBUG] URL: %s", req.URL.String())
+	log.Printf("[DEBUG] Host: %s", req.URL.Host)
+	log.Printf("[DEBUG] Path: %s", req.URL.Path)
+	log.Printf("[DEBUG] RawQuery: %s", req.URL.RawQuery)
+	log.Printf("[DEBUG] Content-Length: %d", req.ContentLength)
+
+	// Log all request headers (with token masking)
+	log.Printf("[DEBUG] Request Headers:")
+	for name, values := range req.Header {
+		for _, value := range values {
+			if name == "Authorization" {
+				log.Printf("[DEBUG]   %s: Bearer ***masked***", name)
+			} else {
+				log.Printf("[DEBUG]   %s: %s", name, value)
+			}
+		}
+	}
+
+	log.Printf("[DEBUG] Request Body: %s", string(jsonData))
+	if c.config.OrgID != "" {
+		log.Printf("[DEBUG] Org ID: %s", c.config.OrgID)
+	}
+	log.Printf("[DEBUG] ====================================================")
+
 	// Execute the request
+	log.Printf("[DEBUG] Executing HTTP request...")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		log.Printf("[ERROR] HTTP request execution failed: %v", err)
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer iferr.Log(resp.Body.Close())
+	defer func() { iferr.Log(resp.Body.Close()) }()
 
-	// Read the response
+	log.Printf("[DEBUG] ==================== HTTP RESPONSE ===================")
+	log.Printf("[DEBUG] Status Code: %d", resp.StatusCode)
+	log.Printf("[DEBUG] Status: %s", resp.Status)
+	log.Printf("[DEBUG] Proto: %s", resp.Proto)
+	log.Printf("[DEBUG] Content-Length: %d", resp.ContentLength)
+	log.Printf("[DEBUG] Transfer-Encoding: %v", resp.TransferEncoding)
+	log.Printf("[DEBUG] Connection Close: %t", resp.Close)
+
+	// Log all response headers
+	log.Printf("[DEBUG] Response Headers:")
+	for name, values := range resp.Header {
+		for _, value := range values {
+			log.Printf("[DEBUG]   %s: %s", name, value)
+		}
+	}
+
+	// Read the response with detailed logging
+	log.Printf("[DEBUG] Attempting to read response body...")
+	log.Printf("[DEBUG] Body reader type: %T", resp.Body)
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		log.Printf("[ERROR] Failed to read response body: %v", err)
+		log.Printf("[ERROR] Error type: %T", err)
+		log.Printf("[ERROR] Response Proto: %s", resp.Proto)
+		log.Printf("[ERROR] Response Content-Length: %d", resp.ContentLength)
+		log.Printf("[ERROR] Response Transfer-Encoding: %v", resp.TransferEncoding)
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
+
+	log.Printf("[DEBUG] Successfully read %d bytes from response body", len(body))
+	if len(body) > 0 {
+		if len(body) < 2000 {
+			log.Printf("[DEBUG] Response Body: %s", string(body))
+		} else {
+			log.Printf("[DEBUG] Response Body (first 2000 chars): %s...", string(body[:2000]))
+		}
+	} else {
+		log.Printf("[DEBUG] Response Body: <empty>")
+	}
+	log.Printf("[DEBUG] =======================================================")
 
 	// Check for HTTP errors
 	if resp.StatusCode != http.StatusOK {
@@ -177,7 +243,7 @@ func (c *Client) TestConnection() error {
 	if err != nil {
 		return fmt.Errorf("failed to execute test request: %w", err)
 	}
-	defer iferr.Log(resp.Body.Close())
+	defer func() { iferr.Log(resp.Body.Close()) }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
