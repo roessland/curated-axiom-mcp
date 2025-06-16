@@ -19,6 +19,11 @@ deps:
 test:
   go test ./...
 
+# Run integration tests
+# (Uses private Axiom instance)
+integration-test:
+  cd private-integration-tests && just integration-test
+
 # Run tests with coverage
 [group('testing')]
 test-coverage:

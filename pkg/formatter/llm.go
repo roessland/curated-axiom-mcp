@@ -17,57 +17,69 @@ func NewLLMFormatter() *LLMFormatter {
 
 // Format formats the Axiom result for LLM consumption
 func (f *LLMFormatter) Format(result *axiom.QueryResult, options FormatOptions) (*FormattedResult, error) {
+	// Count total rows from first table
+	totalRows := 0
+	if len(result.Tables) > 0 && len(result.Tables[0].Columns) > 0 {
+		totalRows = len(result.Tables[0].Columns[0])
+	}
+
 	formatted := &FormattedResult{
-		Count:    len(result.Matches),
-		Warnings: result.Warnings,
+		Count:    totalRows,
+		Warnings: []string{}, // No warnings in tabular format
 		Metadata: make(map[string]interface{}),
 	}
 
 	// Add metadata
-	formatted.Metadata["fields"] = result.Fields
-	formatted.Metadata["status"] = result.Status
-
-	// Determine the best format based on data structure
-	if len(result.Buckets.Series) > 0 {
-		// Time series data
-		formatted.Data = f.formatTimeSeries(result, options)
-		formatted.Summary = f.generateTimeSeriesSummary(result)
-	} else if len(result.Buckets.Totals) > 0 {
-		// Aggregated data
-		formatted.Data = f.formatSummary(result, options)
-		formatted.Summary = f.generateSummary(result)
-	} else {
-		// Tabular data
-		formatted.Data = f.formatTable(result, options)
-		formatted.Summary = f.generateTableSummary(result, options)
+	if len(result.Tables) > 0 {
+		formatted.Metadata["fields"] = result.Tables[0].Fields
 	}
+	formatted.Metadata["status"] = result.Status
+	formatted.Metadata["format"] = result.Format
+	formatted.Metadata["datasetNames"] = result.DatasetNames
+
+	// Format as tabular data (primary format for /_apl endpoint)
+	formatted.Data = f.formatTable(result, options)
+	formatted.Summary = f.generateTableSummary(result, options)
 
 	return formatted, nil
 }
 
 // formatTable creates a clean table format optimized for LLMs
 func (f *LLMFormatter) formatTable(result *axiom.QueryResult, options FormatOptions) *TableResult {
-	if len(result.Matches) == 0 {
+	if len(result.Tables) == 0 || len(result.Tables[0].Columns) == 0 {
+		headers := []string{}
+		if len(result.Tables) > 0 {
+			headers = extractFieldNames(result.Tables[0].Fields)
+		}
 		return &TableResult{
-			Headers: extractFieldNames(result.Fields),
+			Headers: headers,
 			Rows:    [][]string{},
 			Total:   0,
 		}
 	}
 
-	headers := extractFieldNames(result.Fields)
+	table := result.Tables[0]
+	headers := extractFieldNames(table.Fields)
+
+	// Get number of rows from first column
+	totalRows := len(table.Columns[0])
 
 	// Limit rows if specified
-	maxRows := len(result.Matches)
-	if options.MaxRows > 0 && maxRows > options.MaxRows {
+	maxRows := totalRows
+	if options.MaxRows > 0 && totalRows > options.MaxRows {
 		maxRows = options.MaxRows
 	}
 
+	// Convert column-based data to row-based format
 	rows := make([][]string, maxRows)
 	for i := 0; i < maxRows; i++ {
-		row := make([]string, len(result.Matches[i]))
-		for j, cell := range result.Matches[i] {
-			row[j] = formatCellValue(cell)
+		row := make([]string, len(table.Columns))
+		for j, column := range table.Columns {
+			if i < len(column) {
+				row[j] = formatCellValue(column[i])
+			} else {
+				row[j] = ""
+			}
 		}
 		rows[i] = row
 	}
@@ -75,54 +87,22 @@ func (f *LLMFormatter) formatTable(result *axiom.QueryResult, options FormatOpti
 	return &TableResult{
 		Headers: headers,
 		Rows:    rows,
-		Total:   len(result.Matches),
+		Total:   totalRows,
 	}
-}
-
-// formatTimeSeries creates time series format
-func (f *LLMFormatter) formatTimeSeries(result *axiom.QueryResult, options FormatOptions) *TimeSeriesResult {
-	series := make([]Series, len(result.Buckets.Series))
-
-	for i, bucketSeries := range result.Buckets.Series {
-		seriesData := Series{
-			Name:   fmt.Sprintf("Series %d", i+1),
-			Points: []DataPoint{},
-		}
-
-		for _, target := range bucketSeries.Targets {
-			for _, dataPoint := range target.Data {
-				seriesData.Points = append(seriesData.Points, DataPoint{
-					Time:  dataPoint.Time,
-					Value: dataPoint.Value,
-				})
-			}
-		}
-
-		series[i] = seriesData
-	}
-
-	return &TimeSeriesResult{
-		Series: series,
-	}
-}
-
-// formatSummary creates summary format
-func (f *LLMFormatter) formatSummary(result *axiom.QueryResult, options FormatOptions) *SummaryResult {
-	summary := &SummaryResult{
-		Totals: make(map[string]interface{}),
-		Counts: make(map[string]int),
-	}
-
-	for _, total := range result.Buckets.Totals {
-		summary.Totals[total.Field] = total.Value
-	}
-
-	return summary
 }
 
 // generateTableSummary creates a human-readable summary of table data
 func (f *LLMFormatter) generateTableSummary(result *axiom.QueryResult, options FormatOptions) string {
-	totalRows := len(result.Matches)
+	if len(result.Tables) == 0 {
+		return "No data tables found"
+	}
+
+	table := result.Tables[0]
+	totalRows := 0
+	if len(table.Columns) > 0 {
+		totalRows = len(table.Columns[0])
+	}
+
 	displayRows := totalRows
 	if options.MaxRows > 0 && totalRows > options.MaxRows {
 		displayRows = options.MaxRows
@@ -139,50 +119,25 @@ func (f *LLMFormatter) generateTableSummary(result *axiom.QueryResult, options F
 			parts = append(parts, fmt.Sprintf("showing first %d", displayRows))
 		}
 
-		if len(result.Fields) > 0 {
-			fieldNames := extractFieldNames(result.Fields)
+		if len(table.Fields) > 0 {
+			fieldNames := extractFieldNames(table.Fields)
 			parts = append(parts, fmt.Sprintf("with %d fields: %s",
 				len(fieldNames), strings.Join(fieldNames, ", ")))
 		}
 	}
 
-	if len(result.Warnings) > 0 {
-		parts = append(parts, fmt.Sprintf("with %d warnings", len(result.Warnings)))
+	// Add query performance info
+	if result.Status.ElapsedTime > 0 {
+		parts = append(parts, fmt.Sprintf("(query took %dms)", result.Status.ElapsedTime))
 	}
 
 	return strings.Join(parts, " ")
 }
 
-// generateTimeSeriesSummary creates a summary for time series data
-func (f *LLMFormatter) generateTimeSeriesSummary(result *axiom.QueryResult) string {
-	seriesCount := len(result.Buckets.Series)
-	totalPoints := 0
-
-	for _, series := range result.Buckets.Series {
-		for _, target := range series.Targets {
-			totalPoints += len(target.Data)
-		}
-	}
-
-	return fmt.Sprintf("Time series data with %d series and %d total data points",
-		seriesCount, totalPoints)
-}
-
-// generateSummary creates a summary for aggregated data
-func (f *LLMFormatter) generateSummary(result *axiom.QueryResult) string {
-	totalCount := len(result.Buckets.Totals)
-	if totalCount == 0 {
-		return "Summary data with no aggregations"
-	}
-
-	fieldNames := make([]string, len(result.Buckets.Totals))
-	for i, total := range result.Buckets.Totals {
-		fieldNames[i] = total.Field
-	}
-
-	return fmt.Sprintf("Aggregated data for %d fields: %s",
-		totalCount, strings.Join(fieldNames, ", "))
-}
+// formatTimeSeries - removed as tabular format doesn't support time series
+// formatSummary - removed as tabular format doesn't support summary buckets
+// generateTimeSeriesSummary - removed as tabular format doesn't support time series
+// generateSummary - removed as tabular format doesn't support summary buckets
 
 // Helper functions
 

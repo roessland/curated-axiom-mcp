@@ -29,43 +29,68 @@ type QueryRequest struct {
 	EndTime   string `json:"endTime,omitempty"`
 }
 
-// QueryResult represents the response from Axiom
+// QueryResult represents the response from Axiom's tabular format
 type QueryResult struct {
-	Status   string   `json:"status"`
-	Matches  [][]any  `json:"matches"`
-	Buckets  Buckets  `json:"buckets"`
-	Fields   []Field  `json:"fields"`
-	Warnings []string `json:"warnings,omitempty"`
+	Format        string                 `json:"format"`
+	Status        QueryStatus            `json:"status"`
+	Tables        []Table                `json:"tables"`
+	DatasetNames  []string               `json:"datasetNames"`
+	FieldsMetaMap map[string][]FieldMeta `json:"fieldsMetaMap"`
 }
 
-type Buckets struct {
-	Series []BucketSeries `json:"series"`
-	Totals []Total        `json:"totals"`
+type QueryStatus struct {
+	ElapsedTime    int64  `json:"elapsedTime"`
+	MinCursor      string `json:"minCursor"`
+	MaxCursor      string `json:"maxCursor"`
+	BlocksExamined int64  `json:"blocksExamined"`
+	BlocksCached   int64  `json:"blocksCached"`
+	BlocksMatched  int64  `json:"blocksMatched"`
+	BlocksSkipped  int64  `json:"blocksSkipped"`
+	RowsExamined   int64  `json:"rowsExamined"`
+	RowsMatched    int64  `json:"rowsMatched"`
+	NumGroups      int64  `json:"numGroups"`
+	IsPartial      bool   `json:"isPartial"`
+	CacheStatus    int    `json:"cacheStatus"`
+	MinBlockTime   string `json:"minBlockTime"`
+	MaxBlockTime   string `json:"maxBlockTime"`
 }
 
-type BucketSeries struct {
-	Interval string   `json:"interval"`
-	Targets  []Target `json:"targets"`
+type Table struct {
+	Name    string    `json:"name"`
+	Sources []Source  `json:"sources"`
+	Fields  []Field   `json:"fields"`
+	Order   []OrderBy `json:"order"`
+	Groups  []any     `json:"groups"`
+	Range   TimeRange `json:"range"`
+	Columns [][]any   `json:"columns"`
 }
 
-type Target struct {
-	Group string      `json:"group"`
-	Data  []DataPoint `json:"data"`
-}
-
-type DataPoint struct {
-	Time  string  `json:"time"`
-	Value float64 `json:"value"`
-}
-
-type Total struct {
-	Field string  `json:"field"`
-	Value float64 `json:"value"`
+type Source struct {
+	Name string `json:"name"`
 }
 
 type Field struct {
 	Name string `json:"name"`
 	Type string `json:"type"`
+}
+
+type OrderBy struct {
+	Field string `json:"field"`
+	Desc  bool   `json:"desc"`
+}
+
+type TimeRange struct {
+	Field string `json:"field"`
+	Start string `json:"start"`
+	End   string `json:"end"`
+}
+
+type FieldMeta struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Unit        string `json:"unit"`
+	Hidden      bool   `json:"hidden"`
+	Description string `json:"description"`
 }
 
 // NewClient creates a new Axiom client
