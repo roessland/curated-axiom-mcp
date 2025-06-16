@@ -91,7 +91,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.port", 5111)
 	v.SetDefault("queries.file", "queries.yaml")
 	v.SetDefault("queries.cache_ttl", "5m")
-	v.SetDefault("logging.level", "info")
+	v.SetDefault("logging.level", "debug")
 	v.SetDefault("logging.format", "text")
 }
 

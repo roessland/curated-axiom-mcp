@@ -10,10 +10,11 @@ import (
 )
 
 var (
-	cfgFile   string
-	portFlag  int
-	appConfig *config.AppConfig
-	registry  *config.Registry
+	cfgFile     string
+	portFlag    int
+	queriesFile string
+	appConfig   *config.AppConfig
+	registry    *config.Registry
 )
 
 var rootCmd = &cobra.Command{
@@ -36,7 +37,12 @@ Supports both stdio and SSE server modes for maximum compatibility.`,
 		}
 
 		// Initialize query registry
-		registry = config.NewRegistry(appConfig.Queries.File, appConfig.Queries.CacheTTL)
+		// Use queries file flag if provided, otherwise use config file setting
+		actualQueriesFile := appConfig.Queries.File
+		if queriesFile != "" {
+			actualQueriesFile = queriesFile
+		}
+		registry = config.NewRegistry(actualQueriesFile, appConfig.Queries.CacheTTL)
 		if err := registry.Load(); err != nil {
 			return fmt.Errorf("failed to load queries: %w", err)
 		}
@@ -66,6 +72,8 @@ func init() {
 		"config file (default: ~/.config/curated-axiom-mcp/config.yaml)")
 	rootCmd.PersistentFlags().IntVar(&portFlag, "port", 0,
 		"server port (overrides config file, but not PORT env var)")
+	rootCmd.PersistentFlags().StringVar(&queriesFile, "queries", "",
+		"queries file (default: ~/.config/curated-axiom-mcp/queries.yaml)")
 
 	rootCmd.Flags().Bool("stdio", false, "run as stdio MCP server")
 }
