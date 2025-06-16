@@ -34,6 +34,7 @@ queries:
   error_summary:
     name: "error_summary"
     description: "Get error summary for a specific service"
+    dataset: "api"
     apl_query: |
       ['logs']
       | where service == {service}

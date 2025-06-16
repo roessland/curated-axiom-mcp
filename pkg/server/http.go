@@ -24,14 +24,14 @@ func StartSSEServer(appConfig *config.AppConfig, registry *config.Registry) erro
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		iferr.Log(w.Write([]byte(`{"status":"healthy","note":"Use --stdio mode for MCP functionality"}`)))
+		iferr.Log2(w.Write([]byte(`{"status":"healthy","note":"Use --stdio mode for MCP functionality"}`)))
 	})
 
 	// Info endpoint
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		iferr.Log(w.Write([]byte(`
+		iferr.Log2(w.Write([]byte(`
 <!DOCTYPE html>
 <html>
 <head>

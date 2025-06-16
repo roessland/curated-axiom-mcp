@@ -41,6 +41,7 @@ type QueryRegistry struct {
 type Query struct {
 	Name         string      `yaml:"name"`
 	Description  string      `yaml:"description"`
+	Dataset      string      `yaml:"dataset,omitempty"`
 	APLQuery     string      `yaml:"apl_query"`
 	Parameters   []Parameter `yaml:"parameters"`
 	OutputFormat string      `yaml:"output_format"`

@@ -1,0 +1,21 @@
+# Axiom Configuration
+axiom:
+  token: "your-axiom-token-here" # Required: Your Axiom API token
+  # org_id: "your-org-id"         # Optional: Organization ID
+  # dataset: "default-dataset"    # Optional: Default dataset
+  # url: "https://app.axiom.co"   # Optional: Axiom base URL (use "https://app.eu.axiom.co" for EU region)
+
+# Server Configuration
+server:
+  host: "127.0.0.1"
+  port: 5111
+
+# Query Configuration
+queries:
+  file: "{{QUERIES_PATH}}" # Path to queries file
+  cache_ttl: "5m" # Cache query results
+
+# Logging
+logging:
+  level: "info" # debug, info, warn, error
+  format: "text" # text, json

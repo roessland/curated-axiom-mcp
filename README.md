@@ -95,6 +95,12 @@ PORT=8080 curated-axiom-mcp
 curated-axiom-mcp --port 8080
 ```
 
+### 5. Optional: Set up shell completion
+
+```
+eval "$(./curated-axiom-mcp completion zsh)"
+```
+
 ## Usage Modes
 
 ### MCP Server (Stdio)
