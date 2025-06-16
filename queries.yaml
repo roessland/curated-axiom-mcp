@@ -1,0 +1,111 @@
+queries:
+  user_events:
+    name: "user_events"
+    description: "Get events for a specific user"
+    apl_query: |
+      ['events']
+      | where user_id == {user_id}
+      | where _time >= {start_time}
+      | where _time <= {end_time}
+      | limit {limit}
+    parameters:
+      - name: "user_id"
+        type: "string"
+        required: true
+        description: "User ID to filter events for"
+      - name: "start_time"
+        type: "datetime"
+        required: true
+        description: "Start time for the query (ISO 8601 format)"
+      - name: "end_time"
+        type: "datetime"
+        required: false
+        default: "now()"
+        description: "End time for the query (ISO 8601 format)"
+      - name: "limit"
+        type: "int"
+        required: false
+        default: 100
+        description: "Maximum number of events to return"
+    output_format: "table"
+    llm_friendly: true
+    tags: ["user", "events"]
+
+  error_summary:
+    name: "error_summary"
+    description: "Get error summary for a specific service"
+    apl_query: |
+      ['logs']
+      | where service == {service}
+      | where level == "error"
+      | where _time >= {start_time}
+      | summarize count() by bin_auto(_time), error_code
+      | sort by _time desc
+    parameters:
+      - name: "service"
+        type: "string"
+        required: true
+        description: "Service name to analyze errors for"
+        enum: ["api", "frontend", "backend", "worker"]
+      - name: "start_time"
+        type: "datetime"
+        required: false
+        default: "ago(1h)"
+        description: "Start time for the analysis"
+    output_format: "timeseries"
+    llm_friendly: true
+    tags: ["errors", "monitoring"]
+
+  top_pages:
+    name: "top_pages"
+    description: "Get most visited pages"
+    apl_query: |
+      ['pageviews']
+      | where _time >= {start_time}
+      | summarize views = count() by page_url
+      | sort by views desc
+      | limit {limit}
+    parameters:
+      - name: "start_time"
+        type: "datetime"
+        required: false
+        default: "ago(24h)"
+        description: "Start time for the analysis"
+      - name: "limit"
+        type: "int"
+        required: false
+        default: 10
+        description: "Number of top pages to return"
+    output_format: "table"
+    llm_friendly: true
+    tags: ["analytics", "pageviews"]
+
+  slow_queries:
+    name: "slow_queries"
+    description: "Find slow database queries"
+    apl_query: |
+      ['database_logs']
+      | where duration_ms > {threshold_ms}
+      | where _time >= {start_time}
+      | project _time, query, duration_ms, user_id
+      | sort by duration_ms desc
+      | limit {limit}
+    parameters:
+      - name: "threshold_ms"
+        type: "int"
+        required: false
+        default: 1000
+        description: "Minimum query duration in milliseconds"
+      - name: "start_time"
+        type: "datetime"
+        required: false
+        default: "ago(1h)"
+        description: "Start time for the analysis"
+      - name: "limit"
+        type: "int"
+        required: false
+        default: 50
+        description: "Maximum number of slow queries to return"
+    output_format: "table"
+    llm_friendly: true
+    tags: ["database", "performance"]
