@@ -1,13 +1,21 @@
 package config
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
-	"github.com/roessland/curated-axiom-mcp/pkg/utils/errutil"
+	"github.com/roessland/curated-axiom-mcp/pkg/utils/iferr"
 	"github.com/spf13/viper"
 )
+
+//go:embed embedded_config.yaml
+var embeddedConfigTemplate string
+
+//go:embed embedded_queries.yaml
+var embeddedQueriesTemplate string
 
 const (
 	configDirName  = "curated-axiom-mcp"
@@ -42,10 +50,10 @@ func LoadConfig(configFile string, portFlag int) (*AppConfig, error) {
 	v.AutomaticEnv()
 
 	// Specific env var mappings
-	errutil.Panic(v.BindEnv("axiom.token", "AXIOM_TOKEN"))
-	errutil.Panic(v.BindEnv("axiom.org_id", "AXIOM_ORG_ID"))
-	errutil.Panic(v.BindEnv("axiom.url", "AXIOM_URL"))
-	errutil.Panic(v.BindEnv("server.port", "PORT")) // Use simple PORT env var
+	iferr.Panic(v.BindEnv("axiom.token", "AXIOM_TOKEN"))
+	iferr.Panic(v.BindEnv("axiom.org_id", "AXIOM_ORG_ID"))
+	iferr.Panic(v.BindEnv("axiom.url", "AXIOM_URL"))
+	iferr.Panic(v.BindEnv("server.port", "PORT")) // Use simple PORT env var
 
 	// Read config file (optional)
 	if err := v.ReadInConfig(); err != nil {
@@ -102,7 +110,7 @@ func validateConfig(config *AppConfig) error {
 	return nil
 }
 
-// CreateExampleConfig creates an example config file
+// CreateExampleConfig creates an example config file and queries file
 func CreateExampleConfig() error {
 	configDir := getConfigDir()
 	if err := os.MkdirAll(configDir, 0755); err != nil {
@@ -110,38 +118,32 @@ func CreateExampleConfig() error {
 	}
 
 	configPath := filepath.Join(configDir, "config.yaml")
+	queriesPath := filepath.Join(configDir, "queries.yaml")
+
+	// Check if files already exist and return errors if they do
 	if _, err := os.Stat(configPath); err == nil {
 		return fmt.Errorf("config file already exists at %s", configPath)
 	}
 
-	exampleConfig := `# Axiom Configuration
-axiom:
-  token: "your-axiom-token-here"  # Required: Your Axiom API token
-  # org_id: "your-org-id"         # Optional: Organization ID  
-  # dataset: "default-dataset"    # Optional: Default dataset
-  # url: "https://app.axiom.co"   # Optional: Axiom base URL (use "https://app.eu.axiom.co" for EU region)
+	if _, err := os.Stat(queriesPath); err == nil {
+		return fmt.Errorf("queries file already exists at %s", queriesPath)
+	}
 
-# Server Configuration  
-server:
-  host: "127.0.0.1"
-  port: 5111
-  
-# Query Configuration
-queries:
-  file: "queries.yaml"  # Path to queries file
-  cache_ttl: "5m"       # Cache query results
-  
-# Logging
-logging:
-  level: "info"         # debug, info, warn, error
-  format: "text"        # text, json
-`
+	// Prepare the config content by replacing the placeholder
+	configContent := strings.ReplaceAll(embeddedConfigTemplate, "{{QUERIES_PATH}}", queriesPath)
 
-	if err := os.WriteFile(configPath, []byte(exampleConfig), 0644); err != nil {
+	// Write the config file
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
+	// Write the queries file
+	if err := os.WriteFile(queriesPath, []byte(embeddedQueriesTemplate), 0644); err != nil {
+		return fmt.Errorf("failed to write queries file: %w", err)
+	}
+
 	fmt.Printf("Example config created at: %s\n", configPath)
-	fmt.Println("Please edit the file and add your AXIOM_TOKEN.")
+	fmt.Printf("Example queries created at: %s\n", queriesPath)
+	fmt.Println("Please edit the config file and add your AXIOM_TOKEN.")
 	return nil
 }

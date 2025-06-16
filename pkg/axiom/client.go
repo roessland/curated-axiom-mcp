@@ -11,7 +11,7 @@ import (
 
 	"github.com/roessland/curated-axiom-mcp/pkg/config"
 	"github.com/roessland/curated-axiom-mcp/pkg/utils"
-	iferr "github.com/roessland/curated-axiom-mcp/pkg/utils/errutil"
+	"github.com/roessland/curated-axiom-mcp/pkg/utils/iferr"
 )
 
 // Client wraps the Axiom HTTP API

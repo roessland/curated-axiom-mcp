@@ -42,4 +42,5 @@ curated-axiom-mcp
 *.temp
 
 # Log files
-*.log 
+*.log
+.cursor

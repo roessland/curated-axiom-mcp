@@ -1,0 +1,2 @@
+- remove "default dataset" config/env property. dataset is always required for each query and it doesn't make sense to set in config.
+- make axiom.org_id required.
