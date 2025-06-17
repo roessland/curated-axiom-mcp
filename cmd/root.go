@@ -6,6 +6,7 @@ import (
 
 	"github.com/roessland/curated-axiom-mcp/pkg/config"
 	"github.com/roessland/curated-axiom-mcp/pkg/server"
+	"github.com/roessland/curated-axiom-mcp/pkg/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +34,9 @@ whitelisted Axiom queries with simplified results.`,
 		if err != nil {
 			return fmt.Errorf("failed to load config: %w", err)
 		}
+
+		// Setup logger based on configuration
+		utils.SetupLogger(&appConfig.Logging)
 
 		// Initialize query registry
 		// Use queries file flag if provided, otherwise use config file setting

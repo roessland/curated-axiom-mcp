@@ -54,6 +54,8 @@ func LoadConfig(configFile string, portFlag int) (*AppConfig, error) {
 	iferr.Panic(v.BindEnv("axiom.org_id", "AXIOM_ORG_ID"))
 	iferr.Panic(v.BindEnv("axiom.url", "AXIOM_URL"))
 	iferr.Panic(v.BindEnv("server.port", "PORT")) // Use simple PORT env var
+	iferr.Panic(v.BindEnv("logging.level", "LOG_LEVEL"))
+	iferr.Panic(v.BindEnv("logging.format", "LOG_FORMAT"))
 
 	// Read config file (optional)
 	if err := v.ReadInConfig(); err != nil {
@@ -89,7 +91,13 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("axiom.url", "https://api.axiom.co")
 	v.SetDefault("server.host", "127.0.0.1")
 	v.SetDefault("server.port", 5111)
-	v.SetDefault("queries.file", "queries.yaml")
+	// Set queries.file to config directory path, not relative path
+	configDir := getConfigDir()
+	if configDir != "" {
+		v.SetDefault("queries.file", filepath.Join(configDir, "queries.yaml"))
+	} else {
+		v.SetDefault("queries.file", "queries.yaml")
+	}
 	v.SetDefault("queries.cache_ttl", "5m")
 	v.SetDefault("logging.level", "debug")
 	v.SetDefault("logging.format", "text")

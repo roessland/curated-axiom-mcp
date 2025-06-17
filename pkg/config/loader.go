@@ -11,6 +11,12 @@ import (
 func LoadQueries(filePath string) (*QueryRegistry, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
+		// If file doesn't exist, return empty registry (queries will come from Axiom starred queries)
+		if os.IsNotExist(err) {
+			return &QueryRegistry{
+				Queries: make(map[string]Query),
+			}, nil
+		}
 		return nil, fmt.Errorf("failed to read queries file %s: %w", filePath, err)
 	}
 
@@ -29,8 +35,9 @@ func LoadQueries(filePath string) (*QueryRegistry, error) {
 
 // validateQueries validates the loaded query registry
 func validateQueries(registry *QueryRegistry) error {
+	// Allow empty queries since they will be fetched from Axiom starred queries
 	if len(registry.Queries) == 0 {
-		return fmt.Errorf("no queries defined")
+		return nil
 	}
 
 	for name, query := range registry.Queries {

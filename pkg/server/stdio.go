@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/roessland/curated-axiom-mcp/pkg/axiom"
 	"github.com/roessland/curated-axiom-mcp/pkg/config"
 	"github.com/roessland/curated-axiom-mcp/pkg/formatter"
 	"github.com/roessland/curated-axiom-mcp/pkg/utils"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 // StartStdioServer starts the MCP server in stdio mode
