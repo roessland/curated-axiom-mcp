@@ -43,7 +43,10 @@ curated-axiom-mcp
 
 # Log files
 *.log
+
+# Private configuration
 .cursor
+.claude
 
 # Private tests
 private-integration-tests

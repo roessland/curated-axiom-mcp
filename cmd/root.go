@@ -21,9 +21,7 @@ var rootCmd = &cobra.Command{
 	Use:   "curated-axiom-mcp",
 	Short: "MCP server for curated Axiom queries",
 	Long: `An MCP server that provides LLM-friendly access to 
-whitelisted Axiom queries with simplified results.
-
-Supports both stdio and SSE server modes for maximum compatibility.`,
+whitelisted Axiom queries with simplified results.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Skip config validation for config init command
 		if cmd.Name() == "init" && cmd.Parent() != nil && cmd.Parent().Name() == "config" {

@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Run integration tests using "just integration-test". You are not allowed to modify integration tests, only run them and see output.
