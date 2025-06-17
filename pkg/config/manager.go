@@ -86,7 +86,7 @@ func LoadConfig(configFile string, portFlag int) (*AppConfig, error) {
 }
 
 func setDefaults(v *viper.Viper) {
-	v.SetDefault("axiom.url", "https://app.axiom.co")
+	v.SetDefault("axiom.url", "https://api.axiom.co")
 	v.SetDefault("server.host", "127.0.0.1")
 	v.SetDefault("server.port", 5111)
 	v.SetDefault("queries.file", "queries.yaml")

@@ -3,7 +3,7 @@ axiom:
   token: "your-axiom-token-here" # Required: Your Axiom API token
   # org_id: "your-org-id"         # Optional: Organization ID
   # dataset: "default-dataset"    # Optional: Default dataset
-  # url: "https://app.axiom.co"   # Optional: Axiom base URL (use "https://app.eu.axiom.co" for EU region)
+  # url: "https://api.axiom.co"   # Optional: Axiom base URL (use "https://api.eu.axiom.co" for EU region)
 
 # Server Configuration
 server:
