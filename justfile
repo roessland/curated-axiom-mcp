@@ -25,17 +25,14 @@ integration-test:
   cd private-integration-tests && just integration-test
 
 # Run tests with coverage
-[group('testing')]
 test-coverage:
   go test -cover ./...
 
 # Run tests with verbose output
-[group('testing')]
 test-verbose:
   go test -v ./...
 
 # Run benchmarks
-[group('testing')]
 bench:
   go test -bench=. ./...
 

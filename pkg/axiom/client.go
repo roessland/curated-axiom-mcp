@@ -2,10 +2,11 @@ package axiom
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -119,6 +120,107 @@ func NewClient(cfg *config.AxiomConfig) *Client {
 	}
 }
 
+// doRequest performs an HTTP request with comprehensive logging and error handling
+func (c *Client) doRequest(method, url string, body []byte, description string) ([]byte, error) {
+	req, err := http.NewRequest(method, url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set common headers
+	req.Header.Set("Authorization", "Bearer "+c.config.Token)
+	if c.config.OrgID != "" {
+		req.Header.Set("X-Axiom-Org-Id", c.config.OrgID)
+	}
+	if method == "POST" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	// Debug logging for the request
+	slog.Debug(fmt.Sprintf("HTTP request for %s", description),
+		"method", req.Method,
+		"url", req.URL.String(),
+		"org_id", c.config.OrgID,
+		"body_size", len(body),
+	)
+
+	if len(body) > 0 {
+		slog.Debug(fmt.Sprintf("%s request body", description), "body", string(body))
+	}
+
+	// Log headers (with token masking)
+	if slog.Default().Enabled(context.TODO(), slog.LevelDebug) {
+		headers := make(map[string]string)
+		for name, values := range req.Header {
+			for _, value := range values {
+				if name == "Authorization" {
+					headers[name] = "Bearer ***masked***"
+				} else {
+					headers[name] = value
+				}
+			}
+		}
+		slog.Debug(fmt.Sprintf("%s request headers", description), "headers", headers)
+	}
+
+	// Execute the request
+	slog.Debug(fmt.Sprintf("Executing %s request", description))
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to execute %s request", description), "error", err)
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer func() { iferr.Log(resp.Body.Close()) }()
+
+	// Debug logging for the response
+	slog.Debug(fmt.Sprintf("%s response details", description),
+		"status_code", resp.StatusCode,
+		"status", resp.Status,
+		"content_length", resp.ContentLength,
+	)
+
+	// Log response headers
+	if slog.Default().Enabled(context.TODO(), slog.LevelDebug) {
+		headers := make(map[string]string)
+		for name, values := range resp.Header {
+			for _, value := range values {
+				headers[name] = value
+			}
+		}
+		slog.Debug(fmt.Sprintf("%s response headers", description), "headers", headers)
+	}
+
+	// Read the response
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed to read %s response body", description),
+			"error", err,
+			"status_code", resp.StatusCode,
+		)
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	slog.Debug(fmt.Sprintf("Read %s response body", description), "body_size", len(responseBody))
+	if slog.Default().Enabled(context.TODO(), slog.LevelDebug) && len(responseBody) > 0 {
+		if len(responseBody) < 2000 {
+			slog.Debug(fmt.Sprintf("%s response body", description), "body", string(responseBody))
+		} else {
+			slog.Debug(fmt.Sprintf("%s response body (truncated)", description), "body", string(responseBody[:2000])+"...")
+		}
+	}
+
+	// Check for HTTP errors
+	if resp.StatusCode != http.StatusOK {
+		slog.Error(fmt.Sprintf("%s request failed", description),
+			"status_code", resp.StatusCode,
+			"response_body", string(responseBody))
+		return nil, utils.NewAxiomError(resp.StatusCode, string(responseBody))
+	}
+
+	slog.Debug(fmt.Sprintf("Successfully completed %s request", description))
+	return responseBody, nil
+}
+
 // ExecuteQuery executes an APL query against Axiom
 func (c *Client) ExecuteQuery(apl string, dataset string) (*QueryResult, error) {
 	if dataset == "" {
@@ -139,101 +241,11 @@ func (c *Client) ExecuteQuery(apl string, dataset string) (*QueryResult, error) 
 		return nil, fmt.Errorf("failed to marshal query request: %w", err)
 	}
 
-	// Create the HTTP request - use the _apl endpoint
-	url := fmt.Sprintf("%s/v1/datasets/_apl?format=tabular", c.baseURL)
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Set headers
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.config.Token)
-	if c.config.OrgID != "" {
-		req.Header.Set("X-Axiom-Org-Id", c.config.OrgID)
-	}
-
-	// Comprehensive debug logging for the request
-	log.Printf("[DEBUG] ==================== HTTP REQUEST ====================")
-	log.Printf("[DEBUG] Method: %s", req.Method)
-	log.Printf("[DEBUG] URL: %s", req.URL.String())
-	log.Printf("[DEBUG] Host: %s", req.URL.Host)
-	log.Printf("[DEBUG] Path: %s", req.URL.Path)
-	log.Printf("[DEBUG] RawQuery: %s", req.URL.RawQuery)
-	log.Printf("[DEBUG] Content-Length: %d", req.ContentLength)
-
-	// Log all request headers (with token masking)
-	log.Printf("[DEBUG] Request Headers:")
-	for name, values := range req.Header {
-		for _, value := range values {
-			if name == "Authorization" {
-				log.Printf("[DEBUG]   %s: Bearer ***masked***", name)
-			} else {
-				log.Printf("[DEBUG]   %s: %s", name, value)
-			}
-		}
-	}
-
-	log.Printf("[DEBUG] Request Body: %s", string(jsonData))
-	if c.config.OrgID != "" {
-		log.Printf("[DEBUG] Org ID: %s", c.config.OrgID)
-	}
-	log.Printf("[DEBUG] ====================================================")
-
 	// Execute the request
-	log.Printf("[DEBUG] Executing HTTP request...")
-	resp, err := c.httpClient.Do(req)
+	url := fmt.Sprintf("%s/v1/datasets/_apl?format=tabular", c.baseURL)
+	body, err := c.doRequest("POST", url, jsonData, "query execution")
 	if err != nil {
-		log.Printf("[ERROR] HTTP request execution failed: %v", err)
-		return nil, fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer func() { iferr.Log(resp.Body.Close()) }()
-
-	log.Printf("[DEBUG] ==================== HTTP RESPONSE ===================")
-	log.Printf("[DEBUG] Status Code: %d", resp.StatusCode)
-	log.Printf("[DEBUG] Status: %s", resp.Status)
-	log.Printf("[DEBUG] Proto: %s", resp.Proto)
-	log.Printf("[DEBUG] Content-Length: %d", resp.ContentLength)
-	log.Printf("[DEBUG] Transfer-Encoding: %v", resp.TransferEncoding)
-	log.Printf("[DEBUG] Connection Close: %t", resp.Close)
-
-	// Log all response headers
-	log.Printf("[DEBUG] Response Headers:")
-	for name, values := range resp.Header {
-		for _, value := range values {
-			log.Printf("[DEBUG]   %s: %s", name, value)
-		}
-	}
-
-	// Read the response with detailed logging
-	log.Printf("[DEBUG] Attempting to read response body...")
-	log.Printf("[DEBUG] Body reader type: %T", resp.Body)
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Printf("[ERROR] Failed to read response body: %v", err)
-		log.Printf("[ERROR] Error type: %T", err)
-		log.Printf("[ERROR] Response Proto: %s", resp.Proto)
-		log.Printf("[ERROR] Response Content-Length: %d", resp.ContentLength)
-		log.Printf("[ERROR] Response Transfer-Encoding: %v", resp.TransferEncoding)
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	log.Printf("[DEBUG] Successfully read %d bytes from response body", len(body))
-	if len(body) > 0 {
-		if len(body) < 2000 {
-			log.Printf("[DEBUG] Response Body: %s", string(body))
-		} else {
-			log.Printf("[DEBUG] Response Body (first 2000 chars): %s...", string(body[:2000]))
-		}
-	} else {
-		log.Printf("[DEBUG] Response Body: <empty>")
-	}
-	log.Printf("[DEBUG] =======================================================")
-
-	// Check for HTTP errors
-	if resp.StatusCode != http.StatusOK {
-		return nil, utils.NewAxiomError(resp.StatusCode, string(body))
+		return nil, err
 	}
 
 	// Parse the response
@@ -248,62 +260,24 @@ func (c *Client) ExecuteQuery(apl string, dataset string) (*QueryResult, error) 
 // TestConnection tests the connection to Axiom
 func (c *Client) TestConnection() error {
 	url := fmt.Sprintf("%s/v1/user", c.baseURL)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create test request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+c.config.Token)
-	if c.config.OrgID != "" {
-		req.Header.Set("X-Axiom-Org-Id", c.config.OrgID)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to execute test request: %w", err)
-	}
-	defer func() { iferr.Log(resp.Body.Close()) }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return utils.NewAxiomError(resp.StatusCode, string(body))
-	}
-
-	return nil
+	_, err := c.doRequest("GET", url, nil, "connection test")
+	return err
 }
 
 // StarredQueries fetches all starred queries for the authenticated user
 func (c *Client) StarredQueries() ([]StarredQuery, error) {
 	url := fmt.Sprintf("%s/v2/apl-starred-queries?who=all", c.baseURL)
-	req, err := http.NewRequest("GET", url, nil)
+	body, err := c.doRequest("GET", url, nil, "starred queries")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+c.config.Token)
-	if c.config.OrgID != "" {
-		req.Header.Set("X-Axiom-Org-Id", c.config.OrgID)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer func() { iferr.Log(resp.Body.Close()) }()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, utils.NewAxiomError(resp.StatusCode, string(body))
+		return nil, err
 	}
 
 	var queries []StarredQuery
 	if err := json.Unmarshal(body, &queries); err != nil {
+		slog.Error("Failed to parse starred queries response", "error", err)
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
+	slog.Debug("Successfully fetched starred queries", "count", len(queries))
 	return queries, nil
 }
