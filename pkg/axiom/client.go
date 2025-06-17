@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/roessland/curated-axiom-mcp/pkg/config"
@@ -106,25 +105,18 @@ type StarredQuery struct {
 
 // NewClient creates a new Axiom client
 func NewClient(cfg *config.AxiomConfig) *Client {
-	// Convert app URL to API URL
-	apiURL := convertAppURLToAPIURL(cfg.URL)
+	baseURL := cfg.URL
+	if baseURL == "" {
+		baseURL = "https://api.axiom.co"
+	}
 
 	return &Client{
 		config: cfg,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		baseURL: apiURL,
+		baseURL: baseURL,
 	}
-}
-
-// convertAppURLToAPIURL converts the app URL format to API URL format
-// e.g., "https://app.axiom.co" -> "https://api.axiom.co"
-func convertAppURLToAPIURL(appURL string) string {
-	if appURL == "" {
-		return "https://api.axiom.co"
-	}
-	return strings.Replace(appURL, "app.", "api.", 1)
 }
 
 // ExecuteQuery executes an APL query against Axiom

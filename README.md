@@ -136,7 +136,7 @@ curated-axiom-mcp run <query-name> [param1=value1] [param2=value2] ...
 | -------------- | -------------------------- | ---------------------- |
 | `AXIOM_TOKEN`  | Axiom API token (required) | -                      |
 | `AXIOM_ORG_ID` | Axiom organization ID      | -                      |
-| `AXIOM_URL`    | Axiom base URL             | `https://app.axiom.co` |
+| `AXIOM_URL`    | Axiom base URL             | `https://api.axiom.co` |
 | `PORT`         | Server port                | 5111                   |
 
 ### Configuration File
@@ -148,7 +148,7 @@ axiom:
   token: "your-axiom-token"
   org_id: "your-org-id" # optional
   dataset: "default-dataset" # optional
-  url: "https://app.axiom.co" # optional, use "https://app.eu.axiom.co" for EU region
+  url: "https://api.axiom.co" # optional, use "https://api.eu.axiom.co" for EU region
 
 server:
   host: "127.0.0.1"
@@ -176,27 +176,27 @@ Axiom supports different regions with different base URLs:
 
 | Region | Base URL                  | Environment Variable Setting        |
 | ------ | ------------------------- | ----------------------------------- |
-| US     | `https://app.axiom.co`    | `AXIOM_URL=https://app.axiom.co`    |
-| EU     | `https://app.eu.axiom.co` | `AXIOM_URL=https://app.eu.axiom.co` |
+| US     | `https://api.axiom.co`    | `AXIOM_URL=https://api.axiom.co`    |
+| EU     | `https://api.eu.axiom.co` | `AXIOM_URL=https://api.eu.axiom.co` |
 
 The `AXIOM_URL` is automatically converted to the corresponding API endpoint:
 
-- US: `https://app.axiom.co` → `https://api.axiom.co/v1`
-- EU: `https://app.eu.axiom.co` → `https://api.eu.axiom.co/v1`
+- US: `https://api.axiom.co` → `https://api.axiom.co/v1`
+- EU: `https://api.eu.axiom.co` → `https://api.eu.axiom.co/v1`
 
 ### Setting Region
 
 **Environment Variable:**
 
 ```bash
-export AXIOM_URL="https://app.eu.axiom.co"  # For EU region
+export AXIOM_URL="https://api.eu.axiom.co"  # For EU region
 ```
 
 **Configuration File:**
 
 ```yaml
 axiom:
-  url: "https://app.eu.axiom.co" # For EU region
+  url: "https://api.eu.axiom.co" # For EU region
 ```
 
 ## Query Definition
