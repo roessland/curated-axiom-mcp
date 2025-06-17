@@ -93,6 +93,17 @@ type FieldMeta struct {
 	Description string `json:"description"`
 }
 
+// StarredQuery represents a starred query object from the Axiom API
+// You may want to expand this struct based on the actual API response fields
+// See: https://axiom.co/docs/restapi/query (Saved queries endpoints)
+type StarredQuery struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	APL         string `json:"apl"`
+	// Add more fields as needed based on the API response
+}
+
 // NewClient creates a new Axiom client
 func NewClient(cfg *config.AxiomConfig) *Client {
 	// Convert app URL to API URL
@@ -108,21 +119,12 @@ func NewClient(cfg *config.AxiomConfig) *Client {
 }
 
 // convertAppURLToAPIURL converts the app URL format to API URL format
-// e.g., "https://app.axiom.co" -> "https://api.axiom.co/v1"
-//
-//	"https://app.eu.axiom.co" -> "https://api.eu.axiom.co/v1"
+// e.g., "https://app.axiom.co" -> "https://api.axiom.co"
 func convertAppURLToAPIURL(appURL string) string {
 	if appURL == "" {
-		return "https://api.axiom.co/v1"
+		return "https://api.axiom.co"
 	}
-
-	// Replace "app." with "api." and add "/v1" suffix
-	apiURL := strings.Replace(appURL, "app.", "api.", 1)
-	if !strings.HasSuffix(apiURL, "/v1") {
-		apiURL = apiURL + "/v1"
-	}
-
-	return apiURL
+	return strings.Replace(appURL, "app.", "api.", 1)
 }
 
 // ExecuteQuery executes an APL query against Axiom
@@ -146,7 +148,7 @@ func (c *Client) ExecuteQuery(apl string, dataset string) (*QueryResult, error) 
 	}
 
 	// Create the HTTP request - use the _apl endpoint
-	url := fmt.Sprintf("%s/datasets/_apl?format=tabular", c.baseURL)
+	url := fmt.Sprintf("%s/v1/datasets/_apl?format=tabular", c.baseURL)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -253,7 +255,7 @@ func (c *Client) ExecuteQuery(apl string, dataset string) (*QueryResult, error) 
 
 // TestConnection tests the connection to Axiom
 func (c *Client) TestConnection() error {
-	url := fmt.Sprintf("%s/user", c.baseURL)
+	url := fmt.Sprintf("%s/v1/user", c.baseURL)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create test request: %w", err)
@@ -276,4 +278,40 @@ func (c *Client) TestConnection() error {
 	}
 
 	return nil
+}
+
+// StarredQueries fetches all starred queries for the authenticated user
+func (c *Client) StarredQueries() ([]StarredQuery, error) {
+	url := fmt.Sprintf("%s/v2/apl-starred-queries?who=all", c.baseURL)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.config.Token)
+	if c.config.OrgID != "" {
+		req.Header.Set("X-Axiom-Org-Id", c.config.OrgID)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer func() { iferr.Log(resp.Body.Close()) }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, utils.NewAxiomError(resp.StatusCode, string(body))
+	}
+
+	var queries []StarredQuery
+	if err := json.Unmarshal(body, &queries); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return queries, nil
 }
