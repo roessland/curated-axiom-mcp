@@ -50,3 +50,6 @@ curated-axiom-mcp
 
 # Private tests
 private-integration-tests
+
+# Local Claude instructions
+CLAUDE.local.md

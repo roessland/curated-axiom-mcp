@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/axiomhq/axiom-go/axiom/query"
 	"github.com/roessland/curated-axiom-mcp/pkg/axiom"
 )
 
@@ -34,8 +35,6 @@ func (f *LLMFormatter) Format(result *axiom.QueryResult, options FormatOptions) 
 		formatted.Metadata["fields"] = result.Tables[0].Fields
 	}
 	formatted.Metadata["status"] = result.Status
-	formatted.Metadata["format"] = result.Format
-	formatted.Metadata["datasetNames"] = result.DatasetNames
 
 	// Format as tabular data (primary format for /_apl endpoint)
 	formatted.Data = f.formatTable(result, options)
@@ -141,7 +140,7 @@ func (f *LLMFormatter) generateTableSummary(result *axiom.QueryResult, options F
 
 // Helper functions
 
-func extractFieldNames(fields []axiom.Field) []string {
+func extractFieldNames(fields []query.Field) []string {
 	names := make([]string, len(fields))
 	for i, field := range fields {
 		names[i] = field.Name

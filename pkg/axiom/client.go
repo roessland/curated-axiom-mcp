@@ -1,283 +1,131 @@
 package axiom
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"log/slog"
 	"net/http"
-	"time"
+	"net/url"
 
-	"github.com/roessland/curated-axiom-mcp/pkg/config"
-	"github.com/roessland/curated-axiom-mcp/pkg/utils"
-	"github.com/roessland/curated-axiom-mcp/pkg/utils/iferr"
+	"github.com/axiomhq/axiom-go/axiom"
+	"github.com/axiomhq/axiom-go/axiom/query"
 )
 
-// Client wraps the Axiom HTTP API
+// Client wraps the Axiom client for our specific use cases
 type Client struct {
-	config     *config.AxiomConfig
-	httpClient *http.Client
-	baseURL    string
+	client *axiom.Client
+	config *AxiomConfig
 }
 
-// QueryRequest represents an Axiom query request
-type QueryRequest struct {
-	APL       string `json:"apl"`
-	StartTime string `json:"startTime,omitempty"`
-	EndTime   string `json:"endTime,omitempty"`
+// AxiomConfig represents Axiom configuration (avoiding import cycle)
+type AxiomConfig struct {
+	Token   string
+	OrgID   string
+	Dataset string
+	URL     string
 }
 
-// QueryResult represents the response from Axiom's tabular format
-type QueryResult struct {
-	Format        string                 `json:"format"`
-	Status        QueryStatus            `json:"status"`
-	Tables        []Table                `json:"tables"`
-	DatasetNames  []string               `json:"datasetNames"`
-	FieldsMetaMap map[string][]FieldMeta `json:"fieldsMetaMap"`
+// NewClient creates a new Axiom client from config
+func NewClient(config *AxiomConfig) *Client {
+	opts := []axiom.Option{
+		axiom.SetToken(config.Token),
+	}
+	if config.URL != "" {
+		opts = append(opts, axiom.SetURL(config.URL))
+	}
+	if config.OrgID != "" {
+		opts = append(opts, axiom.SetOrganizationID(config.OrgID))
+	}
+
+	client, err := axiom.NewClient(opts...)
+	if err != nil {
+		// This shouldn't happen with valid config, but just in case
+		panic(fmt.Sprintf("failed to create axiom client: %v", err))
+	}
+
+	return &Client{
+		client: client,
+		config: config,
+	}
 }
 
-type QueryStatus struct {
-	ElapsedTime    int64  `json:"elapsedTime"`
-	MinCursor      string `json:"minCursor"`
-	MaxCursor      string `json:"maxCursor"`
-	BlocksExamined int64  `json:"blocksExamined"`
-	BlocksCached   int64  `json:"blocksCached"`
-	BlocksMatched  int64  `json:"blocksMatched"`
-	BlocksSkipped  int64  `json:"blocksSkipped"`
-	RowsExamined   int64  `json:"rowsExamined"`
-	RowsMatched    int64  `json:"rowsMatched"`
-	NumGroups      int64  `json:"numGroups"`
-	IsPartial      bool   `json:"isPartial"`
-	CacheStatus    int    `json:"cacheStatus"`
-	MinBlockTime   string `json:"minBlockTime"`
-	MaxBlockTime   string `json:"maxBlockTime"`
-}
+// QueryResult is an alias for the axiom query result
+type QueryResult = query.Result
 
-type Table struct {
-	Name    string    `json:"name"`
-	Sources []Source  `json:"sources"`
-	Fields  []Field   `json:"fields"`
-	Order   []OrderBy `json:"order"`
-	Groups  []any     `json:"groups"`
-	Range   TimeRange `json:"range"`
-	Columns [][]any   `json:"columns"`
-}
-
-type Source struct {
-	Name string `json:"name"`
-}
-
-type Field struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-}
-
-type OrderBy struct {
-	Field string `json:"field"`
-	Desc  bool   `json:"desc"`
-}
-
-type TimeRange struct {
-	Field string `json:"field"`
-	Start string `json:"start"`
-	End   string `json:"end"`
-}
-
-type FieldMeta struct {
-	Name        string `json:"name"`
-	Type        string `json:"type"`
-	Unit        string `json:"unit"`
-	Hidden      bool   `json:"hidden"`
-	Description string `json:"description"`
-}
-
-// StarredQuery represents a starred query object from the Axiom API
-// You may want to expand this struct based on the actual API response fields
-// See: https://axiom.co/docs/restapi/query (Saved queries endpoints)
+// StarredQuery represents a starred query from Axiom
 type StarredQuery struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	APL         string `json:"apl"`
-	// Add more fields as needed based on the API response
+	ID       string                 `json:"id"`
+	Name     string                 `json:"name"`
+	Dataset  string                 `json:"dataset"`
+	Query    StarredQueryContent    `json:"query"`
+	Kind     string                 `json:"kind"`
+	Metadata map[string]interface{} `json:"metadata"`
+	Who      string                 `json:"who"`
 }
 
-// NewClient creates a new Axiom client
-func NewClient(cfg *config.AxiomConfig) *Client {
-	baseURL := cfg.URL
+// StarredQueryContent represents the content of a starred query
+type StarredQueryContent struct {
+	APL string `json:"apl"`
+}
+
+// ExecuteQuery executes an APL query and returns the result
+func (c *Client) ExecuteQuery(apl string) (*QueryResult, error) {
+	ctx := context.Background()
+
+	result, err := c.client.Query(ctx, apl)
+	if err != nil {
+		return nil, fmt.Errorf("query execution failed: %w", err)
+	}
+
+	return result, nil
+}
+
+// StarredQueries fetches all starred queries from Axiom
+func (c *Client) StarredQueries() ([]StarredQuery, error) {
+	ctx := context.Background()
+
+	// Construct the full URL with query parameters
+	baseURL := c.config.URL
 	if baseURL == "" {
 		baseURL = "https://api.axiom.co"
 	}
 
-	return &Client{
-		config: cfg,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
-		baseURL: baseURL,
+	fullURL, err := url.JoinPath(baseURL, "/v2/apl-starred-queries")
+	if err != nil {
+		return nil, fmt.Errorf("failed to construct URL: %w", err)
 	}
-}
 
-// doRequest performs an HTTP request with comprehensive logging and error handling
-func (c *Client) doRequest(method, url string, body []byte, description string) ([]byte, error) {
-	req, err := http.NewRequest(method, url, bytes.NewBuffer(body))
+	// Add query parameters
+	parsedURL, err := url.Parse(fullURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse URL: %w", err)
+	}
+
+	query := parsedURL.Query()
+	query.Set("who", "all") // Get all starred queries
+	parsedURL.RawQuery = query.Encode()
+	fullURL = parsedURL.String()
+
+	// Create HTTP request
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set common headers
+	// Add required headers
 	req.Header.Set("Authorization", "Bearer "+c.config.Token)
+	req.Header.Set("Content-Type", "application/json")
+
+	// Add org ID header if provided
 	if c.config.OrgID != "" {
-		req.Header.Set("X-Axiom-Org-Id", c.config.OrgID)
-	}
-	if method == "POST" {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-AXIOM-ORG-ID", c.config.OrgID)
 	}
 
-	// Debug logging for the request
-	slog.Debug(fmt.Sprintf("HTTP request for %s", description),
-		"method", req.Method,
-		"url", req.URL.String(),
-		"org_id", c.config.OrgID,
-		"body_size", len(body),
-	)
-
-	if len(body) > 0 {
-		slog.Debug(fmt.Sprintf("%s request body", description), "body", string(body))
-	}
-
-	// Log headers (with token masking)
-	if slog.Default().Enabled(context.TODO(), slog.LevelDebug) {
-		headers := make(map[string]string)
-		for name, values := range req.Header {
-			for _, value := range values {
-				if name == "Authorization" {
-					headers[name] = "Bearer ***masked***"
-				} else {
-					headers[name] = value
-				}
-			}
-		}
-		slog.Debug(fmt.Sprintf("%s request headers", description), "headers", headers)
-	}
-
-	// Execute the request
-	slog.Debug(fmt.Sprintf("Executing %s request", description))
-	resp, err := c.httpClient.Do(req)
+	// Use the axiom client's Do method which handles retries and error parsing
+	var result []StarredQuery
+	_, err = c.client.Do(req, &result)
 	if err != nil {
-		slog.Error(fmt.Sprintf("Failed to execute %s request", description), "error", err)
-		return nil, fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer func() { iferr.Log(resp.Body.Close()) }()
-
-	// Debug logging for the response
-	slog.Debug(fmt.Sprintf("%s response details", description),
-		"status_code", resp.StatusCode,
-		"status", resp.Status,
-		"content_length", resp.ContentLength,
-	)
-
-	// Log response headers
-	if slog.Default().Enabled(context.TODO(), slog.LevelDebug) {
-		headers := make(map[string]string)
-		for name, values := range resp.Header {
-			for _, value := range values {
-				headers[name] = value
-			}
-		}
-		slog.Debug(fmt.Sprintf("%s response headers", description), "headers", headers)
+		return nil, fmt.Errorf("failed to fetch starred queries: %w", err)
 	}
 
-	// Read the response
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		slog.Error(fmt.Sprintf("Failed to read %s response body", description),
-			"error", err,
-			"status_code", resp.StatusCode,
-		)
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	slog.Debug(fmt.Sprintf("Read %s response body", description), "body_size", len(responseBody))
-	if slog.Default().Enabled(context.TODO(), slog.LevelDebug) && len(responseBody) > 0 {
-		if len(responseBody) < 2000 {
-			slog.Debug(fmt.Sprintf("%s response body", description), "body", string(responseBody))
-		} else {
-			slog.Debug(fmt.Sprintf("%s response body (truncated)", description), "body", string(responseBody[:2000])+"...")
-		}
-	}
-
-	// Check for HTTP errors
-	if resp.StatusCode != http.StatusOK {
-		slog.Error(fmt.Sprintf("%s request failed", description),
-			"status_code", resp.StatusCode,
-			"response_body", string(responseBody))
-		return nil, utils.NewAxiomError(resp.StatusCode, string(responseBody))
-	}
-
-	slog.Debug(fmt.Sprintf("Successfully completed %s request", description))
-	return responseBody, nil
-}
-
-// ExecuteQuery executes an APL query against Axiom
-func (c *Client) ExecuteQuery(apl string, dataset string) (*QueryResult, error) {
-	if dataset == "" {
-		dataset = c.config.Dataset
-	}
-
-	if dataset == "" {
-		return nil, fmt.Errorf("no dataset specified")
-	}
-
-	// Prepare the query request
-	queryReq := QueryRequest{
-		APL: apl,
-	}
-
-	jsonData, err := json.Marshal(queryReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal query request: %w", err)
-	}
-
-	// Execute the request
-	url := fmt.Sprintf("%s/v1/datasets/_apl?format=tabular", c.baseURL)
-	body, err := c.doRequest("POST", url, jsonData, "query execution")
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse the response
-	var result QueryResult
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return &result, nil
-}
-
-// TestConnection tests the connection to Axiom
-func (c *Client) TestConnection() error {
-	url := fmt.Sprintf("%s/v1/user", c.baseURL)
-	_, err := c.doRequest("GET", url, nil, "connection test")
-	return err
-}
-
-// StarredQueries fetches all starred queries for the authenticated user
-func (c *Client) StarredQueries() ([]StarredQuery, error) {
-	url := fmt.Sprintf("%s/v2/apl-starred-queries?who=all", c.baseURL)
-	body, err := c.doRequest("GET", url, nil, "starred queries")
-	if err != nil {
-		return nil, err
-	}
-
-	var queries []StarredQuery
-	if err := json.Unmarshal(body, &queries); err != nil {
-		slog.Error("Failed to parse starred queries response", "error", err)
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	slog.Debug("Successfully fetched starred queries", "count", len(queries))
-	return queries, nil
+	return result, nil
 }

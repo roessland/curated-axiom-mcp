@@ -50,7 +50,7 @@ vet:
   go vet ./...
 
 # Run all quality checks
-[group('quality')]
+[group: 'quality']
 check: fmt vet lint test
 
 # Clean build artifacts

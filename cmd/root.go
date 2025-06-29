@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"os"
 
+	"log/slog"
+
+	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/roessland/curated-axiom-mcp/pkg/config"
-	"github.com/roessland/curated-axiom-mcp/pkg/server"
+	"github.com/roessland/curated-axiom-mcp/pkg/cserver"
 	"github.com/roessland/curated-axiom-mcp/pkg/utils"
 	"github.com/spf13/cobra"
 )
@@ -35,28 +38,34 @@ whitelisted Axiom queries with simplified results.`,
 			return fmt.Errorf("failed to load config: %w", err)
 		}
 
-		// Setup logger based on configuration
-		utils.SetupLogger(&appConfig.Logging)
+		// Check if stdio mode is enabled
+		stdio, _ := cmd.Flags().GetBool("stdio")
 
-		// Initialize query registry
-		// Use queries file flag if provided, otherwise use config file setting
-		actualQueriesFile := appConfig.Queries.File
-		if queriesFile != "" {
-			actualQueriesFile = queriesFile
-		}
-		registry = config.NewRegistry(actualQueriesFile, appConfig.Queries.CacheTTL)
-		if err := registry.Load(); err != nil {
-			return fmt.Errorf("failed to load queries: %w", err)
-		}
+		// Setup logger based on configuration
+		utils.SetupLogger(&appConfig.Logging, stdio)
+
+		// Initialize query registry with Axiom client for dynamic loading
+		registry = config.NewRegistryWithAxiom(&appConfig.Axiom, appConfig.Queries.CacheTTL)
 
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		mcpManager := cserver.NewMCP(appConfig, registry)
+		
+		// Load dynamic tools from Axiom
+		slog.Info("Loading dynamic tools from Axiom...")
+		if err := mcpManager.LoadDynamicTools(); err != nil {
+			slog.Error("Failed to load dynamic tools", "error", err)
+			return fmt.Errorf("failed to load dynamic tools: %w", err)
+		}
+
 		stdio, _ := cmd.Flags().GetBool("stdio")
 		if stdio {
-			return server.StartStdioServer(appConfig, registry)
+			return mcpserver.ServeStdio(mcpManager.GetServer())
 		} else {
-			return server.StartSSEServer(appConfig, registry)
+			server := mcpserver.NewStreamableHTTPServer(mcpManager.GetServer())
+			slog.Info("Starting server", "url", fmt.Sprintf("http://localhost:%d/mcp", appConfig.Server.Port))
+			return server.Start(fmt.Sprintf(":%d", appConfig.Server.Port))
 		}
 	},
 }

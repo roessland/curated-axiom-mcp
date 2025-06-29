@@ -45,7 +45,6 @@ type FormatOptions struct {
 	Format      string // "table", "json", "summary", "timeseries"
 	LLMFriendly bool   // Whether to optimize for LLM consumption
 	MaxRows     int    // Maximum number of rows to include
-	IncludeRaw  bool   // Whether to include raw data
 }
 
 // DefaultFormatOptions returns sensible defaults
@@ -54,7 +53,6 @@ func DefaultFormatOptions() FormatOptions {
 		Format:      "table",
 		LLMFriendly: true,
 		MaxRows:     100,
-		IncludeRaw:  false,
 	}
 }
 

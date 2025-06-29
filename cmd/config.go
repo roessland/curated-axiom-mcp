@@ -55,8 +55,17 @@ var configValidateCmd = &cobra.Command{
 
 		// Test connection to Axiom
 		fmt.Print("Testing connection to Axiom... ")
-		client := axiom.NewClient(&appConfig.Axiom)
-		if err := client.TestConnection(); err != nil {
+		clientConfig := &axiom.AxiomConfig{
+			Token:   appConfig.Axiom.Token,
+			OrgID:   appConfig.Axiom.OrgID,
+			Dataset: appConfig.Axiom.Dataset,
+			URL:     appConfig.Axiom.URL,
+		}
+		client := axiom.NewClient(clientConfig)
+		
+		// Test connection by trying to get starred queries
+		_, err := client.StarredQueries()
+		if err != nil {
 			fmt.Printf("❌ Failed: %v\n", err)
 			return fmt.Errorf("axiom connection test failed: %w", err)
 		}

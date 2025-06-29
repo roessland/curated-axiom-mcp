@@ -58,3 +58,23 @@ type Parameter struct {
 	Pattern     string `yaml:"pattern,omitempty"`
 	Enum        []any  `yaml:"enum,omitempty"`
 }
+
+// DynamicQuery represents a query parsed from Axiom starred queries
+type DynamicQuery struct {
+	Name         string
+	OriginalAPL  string
+	TemplateAPL  string
+	ToolName     string
+	Parameters   []DynamicParameter
+	Constraints  []string
+	Description  string
+}
+
+// DynamicParameter represents a parameter for dynamic queries
+type DynamicParameter struct {
+	Name        string
+	Type        string
+	Example     string
+	Description string
+	Required    bool // Derived from template analysis
+}
