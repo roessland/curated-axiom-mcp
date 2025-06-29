@@ -188,3 +188,10 @@ param_name:type = default_value ///param=template_replacement
 
 - MCP responses should never be more than 20 kB to avoid wasting context. If the Axiom response is more than 20 kB (e.g. MBs), it needs to be compressed/summarized before being returned.
 - slog: "msg" field is required. Never use "message" field.
+
+## Tool Execution Memories
+
+- Test a named tool like this:
+  ```bash
+  mcptools call my_service_entity_logs --params '{"EntityId":"<some uuid>", "StartTime": "2025-06-28T21:00:00Z", "EndTime":"2025-06-28T23:00:00Z"}' go run main.go --stdio
+  ```

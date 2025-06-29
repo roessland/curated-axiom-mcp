@@ -1,6 +1,7 @@
 package cserver
 
 import (
+	"fmt"
 	"log/slog"
 	"sync"
 
@@ -42,10 +43,15 @@ func (m *MCPManager) LoadDynamicTools() error {
 		return nil // Already loaded
 	}
 
+	slog.Info("Starting dynamic tools loading...")
+	
 	// Load queries from Axiom
+	slog.Info("Loading queries from Axiom...")
 	if err := m.registry.LoadFromAxiom(); err != nil {
-		return err
+		slog.Error("Failed to load queries from Axiom", "error", err)
+		return fmt.Errorf("failed to load queries from Axiom: %w", err)
 	}
+	slog.Info("Successfully loaded queries from Axiom")
 
 	// Register each dynamic query as an MCP tool
 	dynamicQueries := m.registry.ListDynamicQueries()

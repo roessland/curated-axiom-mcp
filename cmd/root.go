@@ -50,7 +50,9 @@ whitelisted Axiom queries with simplified results.`,
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		slog.Info("Initializing MCP server...")
 		mcpManager := cserver.NewMCP(appConfig, registry)
+		slog.Info("MCP server initialized")
 		
 		// Load dynamic tools from Axiom
 		slog.Info("Loading dynamic tools from Axiom...")
@@ -58,11 +60,14 @@ whitelisted Axiom queries with simplified results.`,
 			slog.Error("Failed to load dynamic tools", "error", err)
 			return fmt.Errorf("failed to load dynamic tools: %w", err)
 		}
+		slog.Info("Dynamic tools loaded successfully")
 
 		stdio, _ := cmd.Flags().GetBool("stdio")
 		if stdio {
+			slog.Info("Starting stdio MCP server...")
 			return mcpserver.ServeStdio(mcpManager.GetServer())
 		} else {
+			slog.Info("Starting HTTP MCP server...")
 			server := mcpserver.NewStreamableHTTPServer(mcpManager.GetServer())
 			slog.Info("Starting server", "url", fmt.Sprintf("http://localhost:%d/mcp", appConfig.Server.Port))
 			return server.Start(fmt.Sprintf(":%d", appConfig.Server.Port))

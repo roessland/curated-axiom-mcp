@@ -138,11 +138,14 @@ func (r *Registry) loadFromAxiomInternal() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	slog.Info("Fetching starred queries from Axiom...")
 	// Fetch starred queries from Axiom
 	starredQueries, err := r.axiomClient.StarredQueries()
 	if err != nil {
+		slog.Error("Failed to fetch starred queries from Axiom", "error", err)
 		return fmt.Errorf("failed to fetch starred queries from Axiom: %w", err)
 	}
+	slog.Info("Fetched starred queries from Axiom", "count", len(starredQueries))
 
 	// Clear existing dynamic queries
 	r.dynamicQueries = make(map[string]*DynamicQuery)

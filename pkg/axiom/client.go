@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/axiomhq/axiom-go/axiom"
 	"github.com/axiomhq/axiom-go/axiom/query"
@@ -81,7 +82,9 @@ func (c *Client) ExecuteQuery(apl string) (*QueryResult, error) {
 
 // StarredQueries fetches all starred queries from Axiom
 func (c *Client) StarredQueries() ([]StarredQuery, error) {
-	ctx := context.Background()
+	// Use context with 8-second timeout to leave buffer for the outer 10-second timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
 
 	// Construct the full URL with query parameters
 	baseURL := c.config.URL
