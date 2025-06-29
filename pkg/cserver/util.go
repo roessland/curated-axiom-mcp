@@ -92,10 +92,15 @@ func formatAsMarkdown(result *formatter.FormattedResult) string {
 			builder.WriteString(fmt.Sprintf("### %s\n\n", colName))
 			builder.WriteString(fmt.Sprintf("- **Type**: %s\n", stats.Type))
 			
-			if stats.First != "" {
+			// Always show first/last, even if empty
+			if stats.First == "" {
+				builder.WriteString("- **First**: (empty)\n")
+			} else {
 				builder.WriteString(fmt.Sprintf("- **First**: %s\n", stats.First))
 			}
-			if stats.Last != "" {
+			if stats.Last == "" {
+				builder.WriteString("- **Last**: (empty)\n")
+			} else {
 				builder.WriteString(fmt.Sprintf("- **Last**: %s\n", stats.Last))
 			}
 			

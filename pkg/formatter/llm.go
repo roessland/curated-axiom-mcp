@@ -277,6 +277,7 @@ func (f *LLMFormatter) generateColumnStats(result *axiom.QueryResult, options Fo
 		
 		valueCounts := make(map[string]int)
 		uniqueValuesSet := make(map[string]bool) // Track all unique values
+		examplesSet := make(map[string]bool)     // Track examples to avoid duplicates
 		var firstValue, lastValue string
 		var examples []string
 		nullCount := 0
@@ -290,7 +291,7 @@ func (f *LLMFormatter) generateColumnStats(result *axiom.QueryResult, options Fo
 			value := column[i]
 			valueStr := formatCellValue(value)
 			
-			// Track first and last
+			// Track first and last (including nulls)
 			if i == 0 {
 				firstValue = valueStr
 			}
@@ -317,11 +318,25 @@ func (f *LLMFormatter) generateColumnStats(result *axiom.QueryResult, options Fo
 				}
 			}
 			
-			// Collect examples (limit to 3, prefer longer/complex values)
-			if len(examples) < 3 {
+			// Collect unique examples (limit to 5, prefer longer/complex values)
+			if !examplesSet[valueStr] && len(examples) < 5 {
 				examples = append(examples, valueStr)
-			} else if len(valueStr) > 50 && len(valueStr) > len(examples[len(examples)-1]) {
-				examples[len(examples)-1] = valueStr // Replace last with longer example
+				examplesSet[valueStr] = true
+			} else if !examplesSet[valueStr] && len(valueStr) > 50 {
+				// Replace shortest example with longer one if we have a complex value
+				shortestIdx := 0
+				shortestLen := len(examples[0])
+				for idx, ex := range examples {
+					if len(ex) < shortestLen {
+						shortestIdx = idx
+						shortestLen = len(ex)
+					}
+				}
+				if len(valueStr) > shortestLen {
+					delete(examplesSet, examples[shortestIdx])
+					examples[shortestIdx] = valueStr
+					examplesSet[valueStr] = true
+				}
 			}
 		}
 		
