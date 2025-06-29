@@ -2,7 +2,6 @@ package cserver
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 
@@ -17,6 +16,9 @@ import (
 // CreateDynamicQueryHandler creates a handler for a dynamic query tool
 func CreateDynamicQueryHandler(toolName string, registry *config.Registry, appConfig *config.AppConfig) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		// Log the tool call request
+		logToolCall(toolName, request)
+		
 		// Get the dynamic query definition
 		query, err := registry.GetDynamicQuery(toolName)
 		if err != nil {
@@ -67,6 +69,7 @@ func CreateDynamicQueryHandler(toolName string, registry *config.Registry, appCo
 			Format:      "table",
 			LLMFriendly: true,
 			MaxRows:     100,
+			APLQuery:    renderedAPL, // Pass the rendered APL query
 		}
 
 		formatted, err := llmFormatter.Format(result, formatOptions)
@@ -74,12 +77,8 @@ func CreateDynamicQueryHandler(toolName string, registry *config.Registry, appCo
 			return failedResult("failed to format results"), nil
 		}
 
-		// Convert to JSON for MCP response
-		jsonData, err := json.MarshalIndent(formatted, "", "  ")
-		if err != nil {
-			return failedResult("failed to serialize results"), nil
-		}
-
-		return successResult(string(jsonData)), nil
+		// Format as markdown/plaintext response
+		textResponse := formatAsMarkdown(formatted)
+		return successResult(textResponse), nil
 	}
 }

@@ -9,6 +9,7 @@ type FormattedResult struct {
 	Count    int                    `json:"count"`
 	Warnings []string               `json:"warnings,omitempty"`
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	APLQuery string                 `json:"apl_query,omitempty"` // The executed APL query
 }
 
 // TableResult represents data in table format
@@ -45,6 +46,7 @@ type FormatOptions struct {
 	Format      string // "table", "json", "summary", "timeseries"
 	LLMFriendly bool   // Whether to optimize for LLM consumption
 	MaxRows     int    // Maximum number of rows to include
+	APLQuery    string // The APL query that was executed (for debugging/transparency)
 }
 
 // DefaultFormatOptions returns sensible defaults

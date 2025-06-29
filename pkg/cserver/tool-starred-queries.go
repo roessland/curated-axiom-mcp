@@ -15,6 +15,9 @@ var starredQueriesTool = mcp.NewTool("debug_starred_queries")
 // DebugStarredQueriesHandler lists all starred queries in Axiom
 func DebugStarredQueriesHandler(appConfig *config.AppConfig) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		// Log the tool call request
+		logToolCall("debug_starred_queries", request)
+		
 		clientConfig := &axiom.AxiomConfig{
 			Token:   appConfig.Axiom.Token,
 			OrgID:   appConfig.Axiom.OrgID,

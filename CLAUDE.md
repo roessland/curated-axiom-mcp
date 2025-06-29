@@ -183,3 +183,8 @@ param_name:type = default_value ///param=template_replacement
 - For axiom: /axiomhq/docs
 - For go/golang: /golang/website or /llmstxt/mcp-go_dev-llms.txt
 - For mcp-go: /mark3labs/mcp-go
+
+## Memories and Guidelines
+
+- MCP responses should never be more than 20 kB to avoid wasting context. If the Axiom response is more than 20 kB (e.g. MBs), it needs to be compressed/summarized before being returned.
+- slog: "msg" field is required. Never use "message" field.

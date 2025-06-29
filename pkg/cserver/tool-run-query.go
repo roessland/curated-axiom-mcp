@@ -2,7 +2,6 @@ package cserver
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -22,6 +21,9 @@ var runQueryTool = mcp.NewTool("run_query",
 
 func RunQueryHandler(registry *config.Registry, appConfig *config.AppConfig) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		// Log the tool call request
+		logToolCall("run_query", request)
+		
 		apl, err := request.RequireString("apl")
 		if err != nil {
 			return errorResult(err), nil
@@ -48,6 +50,7 @@ func RunQueryHandler(registry *config.Registry, appConfig *config.AppConfig) ser
 			Format:      "table",
 			LLMFriendly: true,
 			MaxRows:     100,
+			APLQuery:    apl, // Pass the original APL query
 		}
 
 		formatted, err := llmFormatter.Format(result, formatOptions)
@@ -55,12 +58,8 @@ func RunQueryHandler(registry *config.Registry, appConfig *config.AppConfig) ser
 			return failedResult("failed to format results"), nil
 		}
 
-		// Convert to JSON for MCP response
-		jsonData, err := json.MarshalIndent(formatted, "", "  ")
-		if err != nil {
-			return failedResult("failed to serialize results"), nil
-		}
-
-		return successResult(string(jsonData)), nil
+		// Format as markdown/plaintext response
+		textResponse := formatAsMarkdown(formatted)
+		return successResult(textResponse), nil
 	}
 }

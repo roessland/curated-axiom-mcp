@@ -28,6 +28,7 @@ func (f *LLMFormatter) Format(result *axiom.QueryResult, options FormatOptions) 
 		Count:    totalRows,
 		Warnings: []string{}, // No warnings in tabular format
 		Metadata: make(map[string]interface{}),
+		APLQuery: options.APLQuery,
 	}
 
 	// Add metadata
@@ -36,14 +37,84 @@ func (f *LLMFormatter) Format(result *axiom.QueryResult, options FormatOptions) 
 	}
 	formatted.Metadata["status"] = result.Status
 
-	// Format as tabular data (primary format for /_apl endpoint)
-	formatted.Data = f.formatTable(result, options)
+	// Format as CSV data (primary format for /_apl endpoint)
+	csvData := f.formatAsCSV(result, options)
+	columnStats := f.generateColumnStats(result, options)
+	
+	formatted.Data = csvData
 	formatted.Summary = f.generateTableSummary(result, options)
+	formatted.Metadata["column_stats"] = columnStats
 
 	return formatted, nil
 }
 
-// formatTable creates a clean table format optimized for LLMs
+// formatAsCSV creates a CSV string optimized for LLMs
+func (f *LLMFormatter) formatAsCSV(result *axiom.QueryResult, options FormatOptions) string {
+	if len(result.Tables) == 0 || len(result.Tables[0].Columns) == 0 {
+		return ""
+	}
+
+	table := result.Tables[0]
+	headers := extractFieldNames(table.Fields)
+
+	// Start building CSV output
+	var csvBuilder strings.Builder
+	
+	// Write headers
+	for i, header := range headers {
+		if i > 0 {
+			csvBuilder.WriteString(",")
+		}
+		csvBuilder.WriteString(formatCSVValue(header))
+	}
+	csvBuilder.WriteString("\n")
+
+	// Write column types as second row
+	for i, field := range table.Fields {
+		if i > 0 {
+			csvBuilder.WriteString(",")
+		}
+		csvBuilder.WriteString(formatCSVValue(field.Type))
+	}
+	csvBuilder.WriteString("\n")
+
+	// Write separator row
+	csvBuilder.WriteString("---\n")
+
+	// Get total number of rows
+	totalRows := 0
+	if len(table.Columns) > 0 {
+		totalRows = len(table.Columns[0])
+	}
+
+	// Limit rows if specified
+	maxRows := totalRows
+	if options.MaxRows > 0 && totalRows > options.MaxRows {
+		maxRows = options.MaxRows
+	}
+
+	// Write data rows using the Table.Rows() iterator
+	rowIndex := 0
+	for row := range table.Rows() {
+		if rowIndex >= maxRows {
+			break
+		}
+		
+		// Write row values
+		for i, value := range row {
+			if i > 0 {
+				csvBuilder.WriteString(",")
+			}
+			csvBuilder.WriteString(formatCSVValue(value))
+		}
+		csvBuilder.WriteString("\n")
+		rowIndex++
+	}
+
+	return csvBuilder.String()
+}
+
+// formatTable creates a CSV format optimized for LLMs (legacy method for compatibility)
 func (f *LLMFormatter) formatTable(result *axiom.QueryResult, options FormatOptions) *TableResult {
 	if len(result.Tables) == 0 || len(result.Tables[0].Columns) == 0 {
 		headers := []string{}
@@ -60,8 +131,11 @@ func (f *LLMFormatter) formatTable(result *axiom.QueryResult, options FormatOpti
 	table := result.Tables[0]
 	headers := extractFieldNames(table.Fields)
 
-	// Get number of rows from first column
-	totalRows := len(table.Columns[0])
+	// Get total number of rows
+	totalRows := 0
+	if len(table.Columns) > 0 {
+		totalRows = len(table.Columns[0])
+	}
 
 	// Limit rows if specified
 	maxRows := totalRows
@@ -69,18 +143,24 @@ func (f *LLMFormatter) formatTable(result *axiom.QueryResult, options FormatOpti
 		maxRows = options.MaxRows
 	}
 
-	// Convert column-based data to row-based format
-	rows := make([][]string, maxRows)
-	for i := 0; i < maxRows; i++ {
-		row := make([]string, len(table.Columns))
-		for j, column := range table.Columns {
-			if i < len(column) {
-				row[j] = formatCellValue(column[i])
-			} else {
-				row[j] = ""
-			}
+	// Use the Table.Rows() iterator to get properly formatted rows
+	rows := make([][]string, 0, maxRows)
+	rowIndex := 0
+	
+	// Iterate through rows using the table iterator
+	for row := range table.Rows() {
+		if rowIndex >= maxRows {
+			break
 		}
-		rows[i] = row
+		
+		// Convert row values to CSV-formatted strings
+		csvRow := make([]string, len(row))
+		for i, value := range row {
+			csvRow[i] = formatCSVValue(value)
+		}
+		
+		rows = append(rows, csvRow)
+		rowIndex++
 	}
 
 	return &TableResult{
@@ -107,30 +187,155 @@ func (f *LLMFormatter) generateTableSummary(result *axiom.QueryResult, options F
 		displayRows = options.MaxRows
 	}
 
-	var parts []string
-
 	if totalRows == 0 {
-		parts = append(parts, "No results found")
-	} else {
-		parts = append(parts, fmt.Sprintf("Found %d records", totalRows))
-
-		if displayRows < totalRows {
-			parts = append(parts, fmt.Sprintf("showing first %d", displayRows))
+		// Add query performance info for no results
+		if result.Status.ElapsedTime > 0 {
+			// Convert nanoseconds to seconds with 1 decimal place
+			elapsedSec := float64(result.Status.ElapsedTime) / 1000000000
+			return fmt.Sprintf("No results found (query took %.1f s)", elapsedSec)
 		}
-
-		if len(table.Fields) > 0 {
-			fieldNames := extractFieldNames(table.Fields)
-			parts = append(parts, fmt.Sprintf("with %d fields: %s",
-				len(fieldNames), strings.Join(fieldNames, ", ")))
-		}
+		return "No results found"
 	}
 
-	// Add query performance info
+	// Format with results
+	var summary strings.Builder
+	summary.WriteString(fmt.Sprintf("Found %d records", totalRows))
+	
+	// Add timing info
 	if result.Status.ElapsedTime > 0 {
-		parts = append(parts, fmt.Sprintf("(query took %dms)", result.Status.ElapsedTime))
+		// Convert nanoseconds to seconds with 1 decimal place
+		elapsedSec := float64(result.Status.ElapsedTime) / 1000000000
+		summary.WriteString(fmt.Sprintf(" in %.1f s", elapsedSec))
+	}
+	
+	// Add display info
+	if displayRows < totalRows {
+		summary.WriteString(fmt.Sprintf(". Showing first %d", displayRows))
+	}
+	
+	// Add field count
+	if len(table.Fields) > 0 {
+		summary.WriteString(fmt.Sprintf(" with %d fields", len(table.Fields)))
+	}
+	
+	summary.WriteString(".")
+
+	return summary.String()
+}
+
+// ColumnStats represents statistics for a single column
+type ColumnStats struct {
+	First            string            `json:"first"`
+	Last             string            `json:"last"`
+	NullCount        int               `json:"null_count"`
+	UniqueValues     map[string]int    `json:"unique_values"`
+	TotalUniqueCount int               `json:"total_unique_count"` // Actual count of unique values seen
+	Examples         []string          `json:"examples"`
+	Type             string            `json:"type"`
+}
+
+// generateColumnStats creates statistics for each column
+func (f *LLMFormatter) generateColumnStats(result *axiom.QueryResult, options FormatOptions) map[string]ColumnStats {
+	if len(result.Tables) == 0 || len(result.Tables[0].Columns) == 0 {
+		return make(map[string]ColumnStats)
 	}
 
-	return strings.Join(parts, " ")
+	table := result.Tables[0]
+	stats := make(map[string]ColumnStats)
+	
+	// Get total number of rows
+	totalRows := 0
+	if len(table.Columns) > 0 {
+		totalRows = len(table.Columns[0])
+	}
+	
+	if totalRows == 0 {
+		return stats
+	}
+
+	// Determine sampling strategy - sample if > 1000 rows
+	sampleRate := 1
+	if totalRows > 1000 {
+		sampleRate = totalRows / 500 // Take ~500 samples
+		if sampleRate < 1 {
+			sampleRate = 1
+		}
+	}
+
+	// Process each column
+	for colIndex, field := range table.Fields {
+		if colIndex >= len(table.Columns) {
+			continue
+		}
+		
+		column := table.Columns[colIndex]
+		colStats := ColumnStats{
+			Type:         field.Type,
+			UniqueValues: make(map[string]int),
+			Examples:     make([]string, 0),
+		}
+		
+		valueCounts := make(map[string]int)
+		uniqueValuesSet := make(map[string]bool) // Track all unique values
+		var firstValue, lastValue string
+		var examples []string
+		nullCount := 0
+		
+		// Sample through the data
+		for i := 0; i < len(column); i += sampleRate {
+			if i >= len(column) {
+				break
+			}
+			
+			value := column[i]
+			valueStr := formatCellValue(value)
+			
+			// Track first and last
+			if i == 0 {
+				firstValue = valueStr
+			}
+			if i == len(column)-sampleRate || i+sampleRate >= len(column) {
+				lastValue = valueStr
+			}
+			
+			// Count nulls/empty
+			if value == nil || valueStr == "" {
+				nullCount++
+				continue
+			}
+			
+			// Track all unique values for total count
+			uniqueValuesSet[valueStr] = true
+			
+			// Count frequencies for top values (limit tracking to top 100 to avoid huge maps)
+			if len(valueCounts) < 100 {
+				valueCounts[valueStr]++
+			} else {
+				// Still count if we've seen this value before
+				if _, exists := valueCounts[valueStr]; exists {
+					valueCounts[valueStr]++
+				}
+			}
+			
+			// Collect examples (limit to 3, prefer longer/complex values)
+			if len(examples) < 3 {
+				examples = append(examples, valueStr)
+			} else if len(valueStr) > 50 && len(valueStr) > len(examples[len(examples)-1]) {
+				examples[len(examples)-1] = valueStr // Replace last with longer example
+			}
+		}
+		
+		colStats.First = firstValue
+		colStats.Last = lastValue
+		colStats.NullCount = nullCount
+		colStats.UniqueValues = valueCounts
+		colStats.TotalUniqueCount = len(uniqueValuesSet)
+		colStats.Examples = examples
+		
+		stats[field.Name] = colStats
+	}
+	
+	return stats
 }
 
 // formatTimeSeries - removed as tabular format doesn't support time series
@@ -153,4 +358,24 @@ func formatCellValue(value interface{}) string {
 		return ""
 	}
 	return fmt.Sprintf("%v", value)
+}
+
+// formatCSVValue formats a value for CSV output using single quotes when needed
+func formatCSVValue(value interface{}) string {
+	if value == nil {
+		return ""
+	}
+	
+	str := fmt.Sprintf("%v", value)
+	
+	// Check if the value needs quoting (contains comma, newline, or single quote)
+	needsQuoting := strings.ContainsAny(str, ",\n\r'")
+	
+	if needsQuoting {
+		// Escape single quotes by doubling them
+		escaped := strings.ReplaceAll(str, "'", "''")
+		return "'" + escaped + "'"
+	}
+	
+	return str
 }
