@@ -196,3 +196,7 @@ final_param:type = default_value ///param=template_replacement
   ```bash
   mcptools call athlete_activity_summary --params '{"athlete_id":"12345", "time_range": "7d"}' go run main.go --stdio
   ```
+
+## YAML and Parameter Handling Memories
+
+- yaml Params -> Name must match golang template vars in describe query parameters section.

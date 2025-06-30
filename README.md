@@ -74,24 +74,10 @@ The server automatically converts Axiom starred queries into MCP tools when they
 Create a starred query in Axiom with this APL and metadata:
 
 ```apl
-// CuratedAxiomMCP:
-//   ToolName: athlete_activity_summary
-//   Description: Get activity summary for a specific athlete
-//   Params:
-//     - Name: athlete_id
-//       Type: string
-//       Example: "12345"
-//       Description: The athlete's unique identifier
-//     - Name: time_range
-//       Type: string
-//       Example: "7d"
-//       Description: Time range (e.g., 1h, 24h, 7d, 30d)
-//   Constraints:
-//     - Only returns activities from the last 90 days
-//     - Limited to 1000 results for performance
-
-athlete_id:string = "12345", ///param=athlete_id,
-time_range:string = "7d" ///param=time_range
+declare query_parameters ( // CuratedAxiomMCP
+   athlete_id:string = "12345", ///param='{{.AthleteId}}',
+   time_range:string = "7d" ///param='{{.TimeRange}}'
+);
 
 ["strava_activities"]
 | where athlete_id == athlete_id
@@ -106,6 +92,23 @@ time_range:string = "7d" ///param=time_range
     total_distance_km = round(total_distance / 1000, 2),
     avg_speed_kmh = round(avg_speed * 3.6, 2)
 | project athlete_id, total_activities, total_distance_km, avg_speed_kmh, activity_types
+| limit 1000
+
+// CuratedAxiomMCP:
+//   ToolName: athlete_activity_summary
+//   Description: Get activity summary for a specific athlete
+//   Params:
+//     - Name: AthleteId
+//       Type: string
+//       Example: "12345"
+//       Description: The athlete's unique identifier
+//     - Name: TimeRange
+//       Type: string
+//       Example: "7d"
+//       Description: Time range (e.g., 1h, 24h, 7d, 30d)
+//   Constraints:
+//     - Only returns activities from the last 90 days
+//     - Limited to 1000 results for performance
 ```
 
 ### Metadata Format
@@ -117,7 +120,7 @@ The starred query must contain YAML metadata in comments:
 //   ToolName: your_tool_name           # Required: MCP tool name
 //   Description: Tool description      # Optional: Tool description
 //   Params:                           # Required: Parameter definitions
-//     - Name: param_name              # Parameter name
+//     - Name: ParamName               # Parameter name (Go style)
 //       Type: string                  # Type: string, int, float, bool
 //       Example: "example_value"      # Example value
 //       Description: Parameter desc   # Parameter description
@@ -127,11 +130,13 @@ The starred query must contain YAML metadata in comments:
 
 ### Parameter Annotations
 
-Parameters must be annotated in the APL query:
+Parameters must be declared using `declare query_parameters`:
 
 ```apl
-param_name:type = default_value, ///param=template_replacement,
-final_param:type = default_value ///param=template_replacement
+declare query_parameters ( // CuratedAxiomMCP
+   param_name:type = default_value, ///param='{{.ParamName}}',
+   final_param:type = default_value ///param='{{.FinalParam}}'
+);
 ```
 
 ## Output Format
