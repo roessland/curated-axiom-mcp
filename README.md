@@ -1,15 +1,15 @@
 # curated-axiom-mcp
 
-An MCP (Model Context Protocol) server that provides LLM-friendly access to curated Axiom queries with simplified, structured results.
+An MCP (Model Context Protocol) server that provides LLM-friendly access to curated Axiom queries with intelligent formatting and column statistics.
 
 ## Features
 
-- 🔍 **Curated Query Library**: Define and manage whitelisted Axiom queries in YAML
-- 🤖 **LLM-Optimized**: Results formatted specifically for language model consumption
-- 🚀 **Dual Modes**: Supports both stdio and SSE server modes
-- 📊 **Smart Formatting**: Automatic detection of table, time-series, and summary data
+- 🔍 **Dynamic Tool Generation**: Automatically creates MCP tools from Axiom starred queries
+- 🤖 **LLM-Optimized Formatting**: Results formatted as markdown with CSV data and comprehensive column statistics
+- 📊 **Smart Data Analysis**: Automatic column stats including unique values, examples, and frequency analysis
+- 🚀 **Dual MCP Modes**: Supports both stdio and HTTP server modes
+- ⚡ **Response Size Management**: Warns when responses exceed 20KB to optimize LLM context usage
 - 🛡️ **Parameter Validation**: Type checking and validation for query parameters
-- 🔧 **CLI Tools**: Test queries directly from command line
 
 ## Quick Start
 
@@ -21,111 +21,161 @@ go install github.com/roessland/curated-axiom-mcp@latest
 
 ### 2. Configuration
 
-Set your Axiom token:
+Set your Axiom token and URL via environment variables:
 
 ```bash
 export AXIOM_TOKEN="your-axiom-token-here"
+export AXIOM_URL="https://api.axiom.co"  # or https://api.eu.axiom.co for EU
 ```
 
-Or create a config file:
-
-```bash
-curated-axiom-mcp config init
-# Edit ~/.config/curated-axiom-mcp/config.yaml
-```
-
-### 3. Define Queries
-
-Create or modify `queries.yaml`:
+Or create a config file at `~/.config/curated-axiom-mcp/config.yaml` (no environment variables needed if using config file):
 
 ```yaml
-queries:
-  user_events:
-    name: "user_events"
-    description: "Get events for a specific user"
-    apl_query: |
-      ['events']
-      | where user_id == {user_id}
-      | where _time >= {start_time}
-      | limit {limit}
-    parameters:
-      - name: "user_id"
-        type: "string"
-        required: true
-        description: "User ID to filter events for"
-      - name: "start_time"
-        type: "datetime"
-        required: true
-        description: "Start time (ISO 8601 format)"
-      - name: "limit"
-        type: "int"
-        required: false
-        default: 100
-        description: "Max number of events"
-    output_format: "table"
-    llm_friendly: true
-    tags: ["user", "events"]
+axiom:
+  token: "your-axiom-token"
+  url: "https://api.axiom.co"
 ```
 
-### 4. Test Queries
+### 3. Start MCP Server
 
 ```bash
-# Test a query directly
-curated-axiom-mcp run user_events user_id="12345" start_time="2024-01-01T00:00:00Z"
-
-# List available queries
-curated-axiom-mcp list
-
-# Get detailed query info
-curated-axiom-mcp describe user_events
-```
-
-### 5. Start MCP Server
-
-```bash
-# Stdio mode (for direct MCP client connection)
+# Stdio mode (for MCP clients like Claude Desktop)
 curated-axiom-mcp --stdio
 
-# SSE mode (HTTP server)
-curated-axiom-mcp
-
-# Custom port
-PORT=8080 curated-axiom-mcp
-# or
+# HTTP server mode (for testing with mcptools)
 curated-axiom-mcp --port 8080
 ```
 
-### 5. Optional: Set up shell completion
+## Testing with mcptools
 
-```
-eval "$(./curated-axiom-mcp completion zsh)"
-```
-
-## Usage Modes
-
-### MCP Server (Stdio)
-
-For direct integration with MCP clients:
-
+Install mcptools for testing:
 ```bash
-curated-axiom-mcp --stdio
+npm install -g @modelcontextprotocol/cli
 ```
 
-### MCP Server (SSE)
-
-For HTTP-based MCP connections:
-
+Test the server:
 ```bash
-curated-axiom-mcp
-# Serves on http://127.0.0.1:5111/mcp by default
+# List available tools
+mcptools tools go run main.go --stdio
+
+# Test a manual query
+mcptools call run_query --params '{"apl": "[\"activities\"] | where athlete_id == \"12345\" | where _time > ago(24h) | limit 10"}' go run main.go --stdio
+
+# Test a dynamic tool (if you have starred queries)
+mcptools call athlete_activity_summary --params '{"athlete_id": "12345", "time_range": "7d"}' go run main.go --stdio
 ```
 
-### CLI Query Execution
+## Creating Dynamic Tools from Starred Queries
 
-For testing and manual query execution:
+The server automatically converts Axiom starred queries into MCP tools when they contain special metadata comments:
 
-```bash
-curated-axiom-mcp run <query-name> [param1=value1] [param2=value2] ...
+### Example Starred Query
+
+Create a starred query in Axiom with this APL and metadata:
+
+```apl
+// CuratedAxiomMCP:
+//   ToolName: athlete_activity_summary
+//   Description: Get activity summary for a specific athlete
+//   Params:
+//     - Name: athlete_id
+//       Type: string
+//       Example: "12345"
+//       Description: The athlete's unique identifier
+//     - Name: time_range
+//       Type: string
+//       Example: "7d"
+//       Description: Time range (e.g., 1h, 24h, 7d, 30d)
+//   Constraints:
+//     - Only returns activities from the last 90 days
+//     - Limited to 1000 results for performance
+
+athlete_id:string = "12345", ///param=athlete_id,
+time_range:string = "7d" ///param=time_range
+
+["strava_activities"]
+| where athlete_id == athlete_id
+| where _time > ago(time_range)
+| summarize 
+    total_activities = count(),
+    total_distance = sum(distance),
+    avg_speed = avg(average_speed),
+    activity_types = dcount(sport_type)
+  by athlete_id
+| extend
+    total_distance_km = round(total_distance / 1000, 2),
+    avg_speed_kmh = round(avg_speed * 3.6, 2)
+| project athlete_id, total_activities, total_distance_km, avg_speed_kmh, activity_types
+```
+
+### Metadata Format
+
+The starred query must contain YAML metadata in comments:
+
+```yaml
+// CuratedAxiomMCP:
+//   ToolName: your_tool_name           # Required: MCP tool name
+//   Description: Tool description      # Optional: Tool description
+//   Params:                           # Required: Parameter definitions
+//     - Name: param_name              # Parameter name
+//       Type: string                  # Type: string, int, float, bool
+//       Example: "example_value"      # Example value
+//       Description: Parameter desc   # Parameter description
+//   Constraints:                      # Optional: Usage constraints
+//     - Constraint description
+```
+
+### Parameter Annotations
+
+Parameters must be annotated in the APL query:
+
+```apl
+param_name:type = default_value, ///param=template_replacement,
+final_param:type = default_value ///param=template_replacement
+```
+
+## Output Format
+
+The server returns structured markdown with:
+
+### Query Summary
+```
+Found 42 records in 0.8 s with 6 fields.
+```
+
+### APL Query Section
+```markdown
+## APL
+["strava_activities"] | where athlete_id == "12345" | where _time > ago(7d)
+```
+
+### Results Section
+```markdown
+## Results
+athlete_id,total_activities,total_distance_km,avg_speed_kmh,activity_types
+string,int,float,float,int
+---
+12345,15,247.8,18.5,3
+67890,8,156.2,16.7,2
+```
+
+### Column Statistics
+```markdown
+## Column Stats
+
+**athlete_id** (string)
+- First: "12345", Last: "67890"
+- Nulls: 0
+- Unique: 2 total
+- Top values: "12345" (15), "67890" (8)
+- Examples: "12345", "67890"
+
+**total_activities** (int)
+- First: "15", Last: "8"
+- Nulls: 0
+- Unique: 2 total
+- Top values: "15" (1), "8" (1)
+- Examples: "15", "8"
 ```
 
 ## Configuration
@@ -138,6 +188,7 @@ curated-axiom-mcp run <query-name> [param1=value1] [param2=value2] ...
 | `AXIOM_ORG_ID` | Axiom organization ID      | -                      |
 | `AXIOM_URL`    | Axiom base URL             | `https://api.axiom.co` |
 | `PORT`         | Server port                | 5111                   |
+| `LOG_LEVEL`    | Logging level              | info                   |
 
 ### Configuration File
 
@@ -147,15 +198,13 @@ Location: `~/.config/curated-axiom-mcp/config.yaml`
 axiom:
   token: "your-axiom-token"
   org_id: "your-org-id" # optional
-  dataset: "default-dataset" # optional
-  url: "https://api.axiom.co" # optional, use "https://api.eu.axiom.co" for EU region
+  url: "https://api.axiom.co" # or https://api.eu.axiom.co for EU
 
 server:
   host: "127.0.0.1"
   port: 5111
 
 queries:
-  file: "queries.yaml"
   cache_ttl: "5m"
 
 logging:
@@ -163,177 +212,120 @@ logging:
   format: "text"
 ```
 
-### Configuration Precedence
-
-1. Command line flags (e.g., `--port`)
-2. Environment variables (e.g., `PORT`)
-3. Configuration file
-4. Defaults
-
-## Regions
-
-Axiom supports different regions with different base URLs:
+### Regions
 
 | Region | Base URL                  | Environment Variable Setting        |
 | ------ | ------------------------- | ----------------------------------- |
 | US     | `https://api.axiom.co`    | `AXIOM_URL=https://api.axiom.co`    |
 | EU     | `https://api.eu.axiom.co` | `AXIOM_URL=https://api.eu.axiom.co` |
 
-The `AXIOM_URL` is automatically converted to the corresponding API endpoint:
+## Example Use Cases
 
-- US: `https://api.axiom.co` → `https://api.axiom.co/v1`
-- EU: `https://api.eu.axiom.co` → `https://api.eu.axiom.co/v1`
-
-### Setting Region
-
-**Environment Variable:**
-
-```bash
-export AXIOM_URL="https://api.eu.axiom.co"  # For EU region
-```
-
-**Configuration File:**
-
-```yaml
-axiom:
-  url: "https://api.eu.axiom.co" # For EU region
-```
-
-## Query Definition
-
-### Query Structure
-
-```yaml
-queries:
-  query_name:
-    name: "query_name" # Query identifier
-    description: "Human description" # Description for LLMs
-    apl_query: | # APL query with {param} placeholders
-      ['dataset']
-      | where field == {param}
-    parameters: # Parameter definitions
-      - name: "param"
-        type: "string" # string, int, float, datetime, duration, boolean
-        required: true # Whether parameter is required
-        default: "value" # Default value (optional)
-        description: "Parameter desc" # Help text
-        enum: ["val1", "val2"] # Allowed values (optional)
-        pattern: "regex" # Validation pattern (optional)
-    output_format: "table" # table, timeseries, summary
-    llm_friendly: true # Optimize for LLM consumption
-    tags: ["tag1", "tag2"] # Categorization tags
-```
-
-### Parameter Types
-
-- **`string`**: Text values
-- **`int`**: Integer numbers
-- **`float`**: Decimal numbers
-- **`boolean`**: true/false values
-- **`datetime`**: ISO 8601 timestamps
-- **`duration`**: Go duration strings (e.g., "1h", "30m")
-
-### Parameter Placeholders
-
-Use `{parameter_name}` in your APL queries:
-
+### Fitness Activity Analysis
 ```apl
-['events']
-| where user_id == {user_id}
-| where _time >= {start_time}
-| limit {limit}
+// Track athlete performance metrics
+["strava_activities"] 
+| where athlete_id == "12345"
+| where sport_type == "running"
+| where _time > ago(30d)
+| summarize avg_pace = avg(average_speed), total_distance = sum(distance)
 ```
 
-## Commands
-
-### Core Commands
-
-- `curated-axiom-mcp` - Start SSE server
-- `curated-axiom-mcp --stdio` - Start stdio server
-- `curated-axiom-mcp run <query> [params...]` - Execute query
-- `curated-axiom-mcp list` - List available queries
-- `curated-axiom-mcp describe <query>` - Show query details
-
-### Configuration Commands
-
-- `curated-axiom-mcp config init` - Create example config
-- `curated-axiom-mcp config show` - Display current config
-- `curated-axiom-mcp config validate` - Test configuration
-
-### Global Flags
-
-- `--config <file>` - Custom config file path
-- `--port <port>` - Override server port
-
-## Example Queries
-
-### Simple Event Query
-
-```yaml
-user_events:
-  name: "user_events"
-  description: "Get recent events for a user"
-  apl_query: |
-    ['events']
-    | where user_id == {user_id}
-    | where _time >= ago({timespan})
-    | limit {limit}
-  parameters:
-    - name: "user_id"
-      type: "string"
-      required: true
-    - name: "timespan"
-      type: "duration"
-      default: "1h"
-    - name: "limit"
-      type: "int"
-      default: 100
+### Event Monitoring
+```apl
+// Monitor application events
+["app_events"]
+| where user_id == "user123"
+| where event_type == "workout_completed"
+| where _time >= ago(7d)
+| summarize events = count() by bin(1d, _time)
 ```
 
-### Error Analysis
-
-```yaml
-error_analysis:
-  name: "error_analysis"
-  description: "Analyze errors by service and time"
-  apl_query: |
-    ['logs']
-    | where level == "error"
-    | where service == {service}
-    | where _time >= {start_time}
-    | summarize errors = count() by bin(5m, _time), error_code
-    | sort by _time desc
-  parameters:
-    - name: "service"
-      type: "string"
-      required: true
-      enum: ["api", "web", "worker"]
-    - name: "start_time"
-      type: "datetime"
-      default: "ago(1h)"
-  output_format: "timeseries"
+### Performance Metrics
+```apl
+// Analyze API response times
+["api_logs"]
+| where endpoint contains "activities"
+| where _time >= ago(1h)
+| summarize avg_response_time = avg(response_time_ms), error_rate = countif(status_code >= 400) * 100.0 / count()
 ```
 
 ## Development
 
 ### Building
-
 ```bash
 go build -o curated-axiom-mcp ./main.go
 ```
 
 ### Testing
+```bash
+# Run tests
+go test ./...
+
+# Run with quality checks
+just check  # requires justfile
+
+# Integration testing (requires Axiom config)
+just integration-test
+```
+
+### Debug Logging
+
+Debug logs are written to `~/.config/curated-axiom-mcp/stderr.log`. Tool calls and responses are also logged to `stdout.log` for debugging.
 
 ```bash
-# Test configuration
-curated-axiom-mcp config validate
+# Monitor debug logs
+tail -f ~/.config/curated-axiom-mcp/stderr.log
 
-# Test a query
-curated-axiom-mcp run user_events user_id="test" start_time="2024-01-01T00:00:00Z"
-
-# Check available queries
-curated-axiom-mcp list
+# Monitor tool execution
+tail -f ~/.config/curated-axiom-mcp/stdout.log
 ```
+
+## MCP Integration
+
+### Claude Desktop
+
+Add to your Claude Desktop MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "curated-axiom-mcp": {
+      "command": "curated-axiom-mcp",
+      "args": ["--stdio"],
+      "env": {
+        "AXIOM_TOKEN": "your-token-here",
+        "AXIOM_URL": "https://api.axiom.co"
+      }
+    }
+  }
+}
+```
+
+Note: The `env` section is only needed if you're not using a config file. If you have `~/.config/curated-axiom-mcp/config.yaml` with your credentials, you can omit the environment variables.
+
+### Other MCP Clients
+
+The server supports standard MCP protocol over both stdio and HTTP transports.
+
+## Features in Detail
+
+### Column Statistics
+- **First/Last Values**: Shows first and last values in the dataset
+- **Null Counts**: Tracks empty/null values
+- **Unique Value Analysis**: Counts unique values with frequency analysis
+- **Smart Sampling**: For large datasets, intelligently samples data for statistics
+- **High Cardinality Handling**: Summarizes columns with many unique values
+
+### Response Size Management
+- Warns when responses exceed 20KB to help optimize LLM context usage
+- Automatically truncates debug logs to manageable sizes
+- Provides row limiting options for large result sets
+
+### Error Handling
+- Detailed error logging for debugging
+- Graceful handling of malformed starred queries
+- Clear error messages for missing parameters or invalid queries
 
 ## License
 

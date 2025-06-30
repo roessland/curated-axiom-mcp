@@ -64,7 +64,7 @@ mcpt tools go run main.go --stdio
 
 Run APL query via MCP:
 ```bash
-mcpt call run_query --params '{"apl": "[\"my-service\"] | where _time > ago(1h) | count"}' go run main.go --stdio
+mcpt call run_query --params '{"apl": "[\"activities\"] | where _time > ago(1h) | count"}' go run main.go --stdio
 ```
 
 Debug starred queries:
@@ -174,7 +174,8 @@ Starred queries must contain properly formatted YAML metadata:
 
 And parameter annotations in APL:
 ```apl
-param_name:type = default_value ///param=template_replacement
+param_name:type = default_value, ///param=template_replacement,
+final_param:type = default_value ///param=template_replacement
 ```
 
 ## Context7 Library IDs
@@ -193,5 +194,5 @@ param_name:type = default_value ///param=template_replacement
 
 - Test a named tool like this:
   ```bash
-  mcptools call my_service_entity_logs --params '{"EntityId":"<some uuid>", "StartTime": "2025-06-28T21:00:00Z", "EndTime":"2025-06-28T23:00:00Z"}' go run main.go --stdio
+  mcptools call athlete_activity_summary --params '{"athlete_id":"12345", "time_range": "7d"}' go run main.go --stdio
   ```
